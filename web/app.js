@@ -132,15 +132,19 @@ function renderMarkdown(text) {
       html += `<pre><code>${escapeHtml(part.replace(/\n$/, ''))}</code></pre>`;
       return;
     }
+    // A list may follow a line of text with no blank line between ("**שישי**" then "- בוקר…"):
+    // each block is split into runs of text, bullets and numbered items.
+    const UL = /^\s*[-*•]\s+/;
+    const OL = /^\s*\d+[.)]\s+/;
+    const kindOf = (l) => (UL.test(l) ? 'ul' : OL.test(l) ? 'ol' : 'p');
     for (const block of part.split(/\n{2,}/)) {
       const lines = block.split('\n').filter((l) => l.trim());
-      if (!lines.length) continue;
-      if (lines.every((l) => /^\s*[-*•]\s+/.test(l))) {
-        html += `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*•]\s+/, ''))}</li>`).join('')}</ul>`;
-      } else if (lines.every((l) => /^\s*\d+[.)]\s+/.test(l))) {
-        html += `<ol>${lines.map((l) => `<li>${inline(l.replace(/^\s*\d+[.)]\s+/, ''))}</li>`).join('')}</ol>`;
-      } else {
-        html += `<p>${lines.map((l) => inline(l.replace(/^#{1,6}\s+/, ''))).join('<br>')}</p>`;
+      for (let i = 0; i < lines.length; ) {
+        const kind = kindOf(lines[i]);
+        const run = [];
+        while (i < lines.length && kindOf(lines[i]) === kind) run.push(lines[i++]);
+        if (kind === 'p') html += `<p>${run.map((l) => inline(l.replace(/^#{1,6}\s+/, ''))).join('<br>')}</p>`;
+        else html += `<${kind}>${run.map((l) => `<li>${inline(l.replace(kind === 'ul' ? UL : OL, ''))}</li>`).join('')}</${kind}>`;
       }
     }
   });
@@ -280,8 +284,10 @@ function renderStatus() {
     banner.hidden = false;
   } else if (state.online) {
     el.classList.add('online');
+    // The model that answers this conversation: in the cloud, the cloud's (the Mac still runs the tools).
+    const cloud = state.engine === 'cloud' && state.status?.cloud?.ready ? state.status.cloud.modelName : null;
     const model = state.status?.localModel;
-    text.textContent = model ? `המק מחובר · מקומי · ${model}` : 'המק מחובר';
+    text.textContent = cloud ? `המק מחובר · ענן · ${cloud}` : model ? `המק מחובר · מקומי · ${model}` : 'המק מחובר';
     if (state.status && !state.status.ollama.modelInstalled) {
       el.classList.replace('online', 'warn');
       banner.classList.add('warn');
@@ -422,7 +428,12 @@ function addDisplay(el, d) {
         if (it.account) li.append(el$('div', 'tag', it.account));
       } else if (d.kind === 'events') {
         const top = el$('div', 'row-top');
-        top.append(el$('span', 'who', it.title), el$('span', 'when', `${it.day} · ${it.when}`));
+        // "09:30–09:45" inside right-to-left text would show reversed: the range keeps left-to-right.
+        const when = el$('span', 'when', `${it.day} · `);
+        const range = el$('bdi', null, it.when);
+        range.dir = 'ltr';
+        when.append(range);
+        top.append(el$('span', 'who', it.title), when);
         li.append(top);
         const more = [it.location, it.calendar].filter(Boolean).join(' · ');
         if (more) li.append(el$('div', 'snippet', more));
@@ -949,6 +960,7 @@ function defaultEngine() {
 
 /** The switch next to the message box: shown once a cloud key exists on the Mac. */
 function renderEngineChip() {
+  if (state.online) renderStatus();
   const btn = $('#engine-btn');
   const cloud = state.status?.cloud;
   const visible = !!cloud && cloud.providers?.some((p) => p.hasKey);

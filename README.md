@@ -2,7 +2,14 @@
 
 **A private, Hebrew-speaking personal assistant that runs on your Mac and that you talk to from your iPhone.**
 
-[עברית](README.he.md)
+**[📖 Setup guide](docs/GUIDE.md)** · **[🔒 Privacy policy](PRIVACY.md)** · **[עברית](README.he.md)**
+
+<p align="center">
+  <img src="docs/screenshots/mail.jpg" width="200" alt="New mail, summarized">
+  <img src="docs/screenshots/approve.jpg" width="200" alt="A reply waiting for approval">
+  <img src="docs/screenshots/agents.jpg" width="200" alt="Claude Code from the phone">
+  <img src="docs/screenshots/cloud.jpg" width="200" alt="An answer from the cloud, in dark mode">
+</p>
 
 Brain lives on your Mac. It reads your mail, calendar, reminders, notes, contacts and files, searches the web,
 and keeps an eye on your coding agents (Claude Code and Codex). You talk to it from an app on your iPhone's Home Screen,
@@ -12,13 +19,21 @@ It sees everything, but it never changes anything on its own: every email, messa
 deleted file or message to a coding agent is shown to you first on a card, with the recipient and the exact text,
 and happens only after you tap **Approve**.
 
-> Brain speaks Hebrew: the app, its answers and the setup scripts are in Hebrew. This README is the English guide.
+> [!IMPORTANT]
+> **🔒 Your data stays on your Mac.** There is no Brain server and no Brain account, and the author never receives your data.
+> Nothing is sent, changed or deleted without your approval. A cloud model is used only when you ask for it, and sees only
+> the kinds of data you allow. No analytics, no telemetry. **[Read the privacy policy →](PRIVACY.md)**
+
+> Brain speaks Hebrew: the app, its answers and the setup scripts are in Hebrew. The screenshots use made-up data.
 
 ---
 
 ## Contents
 
+- [📖 Setup guide, step by step, with screenshots](docs/GUIDE.md)
+- [🔒 Privacy policy](PRIVACY.md)
 - [What it does](#what-it-does)
+- [Screenshots](#screenshots)
 - [How it works](#how-it-works)
 - [Privacy and security](#privacy-and-security)
 - [Requirements](#requirements)
@@ -60,6 +75,16 @@ It also:
   or when you accept its offer for a complex task.
 - **Catches false claims.** If an answer says "sent" or "scheduled" but no action ran, a warning appears under it.
 
+## Screenshots
+
+| <img src="docs/screenshots/home.jpg" width="190" alt="A new conversation"> | <img src="docs/screenshots/calendar.jpg" width="190" alt="Tomorrow, from iCloud and Google"> | <img src="docs/screenshots/choice.jpg" width="190" alt="Offering the cloud for a long task"> | <img src="docs/screenshots/notifications.jpg" width="190" alt="Notifications"> |
+| :---: | :---: | :---: | :---: |
+| A new conversation | Tomorrow, from iCloud and Google | Offering the cloud for a long task | Notifications |
+| <img src="docs/screenshots/privacy.jpg" width="190" alt="What the cloud may see"> | <img src="docs/screenshots/memory.jpg" width="190" alt="Memory you can edit"> | <img src="docs/screenshots/menu.jpg" width="190" alt="Conversations and menu"> | <img src="docs/screenshots/pair.jpg" width="190" alt="Pairing a device"> |
+| What the cloud may see | Memory you can edit | Conversations and menu | Pairing a device |
+
+Every screen, step by step, is in the [setup guide](docs/GUIDE.md).
+
 ## How it works
 
 ```mermaid
@@ -90,6 +115,9 @@ flowchart LR
   Reminders and Contacts and drives Notes and Messages. macOS grants these permissions to apps, not to Node.
 
 ## Privacy and security
+
+The full details, including what each outside service receives and how to delete everything, are in the
+**[privacy policy](PRIVACY.md)**.
 
 - **Nothing is exposed to the internet.** The server listens on `127.0.0.1` only. Your phone reaches it through
   [Tailscale](https://tailscale.com), over HTTPS, and only devices on your own tailnet can connect.
@@ -127,6 +155,7 @@ Recommended: turn on FileVault, and set a monthly spending limit with your cloud
 ## Installation
 
 About 15 minutes. Everything runs in Terminal on the Mac, except the iPhone part of step 6.
+The **[setup guide](docs/GUIDE.md)** walks through the same steps in more detail, with screenshots and what to do when something goes wrong.
 
 **1. Get the code**
 
@@ -182,7 +211,8 @@ npm run doctor
 
 ## Connecting your accounts
 
-Each one is optional. The app's Settings show what isn't connected yet.
+Each one is optional. The app's Settings show what isn't connected yet. Every screen of the Google setup is described in the
+**[setup guide](docs/GUIDE.md#5-connect-gmail-and-google-calendar)**.
 
 ### Gmail, Google Calendar and Contacts
 

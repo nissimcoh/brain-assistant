@@ -17,7 +17,7 @@ import { createWeb, type Web } from './web.ts';
 import { randomUUID } from 'node:crypto';
 import { createToolRegistry, defaultExec, type Exec, snippet, sensitiveReason, MAX_MEMORIES, type ToolContext, ToolInputError, type ToolRegistry } from './tools.ts';
 
-export const VERSION = '0.16.0';
+export const VERSION = '0.16.1';
 
 const MAX_MEMORY_CHARS = 500;
 
