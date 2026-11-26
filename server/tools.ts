@@ -45,6 +45,8 @@ export interface ToolContext {
   keepSent?: (file: { path: string; name: string; size: number }) => string;
   /** Claude Code and Codex conversations on this Mac (agents.ts). */
   agents?: Agents;
+  /** Keeps a file with the conversation (uploads.ts) and returns its text, if it has any. */
+  saveFile?: (name: string, bytes: Buffer, source: Attachment['source'], conversationId?: string) => Promise<{ attachment: Attachment; text: string | null }>;
   /** The Mac's own camera (apple.ts through Brain Helper; photos kept by uploads.ts). */
   camera?: {
     available(): Promise<boolean>;
@@ -664,6 +666,41 @@ const mailRead: Tool = {
         ].join('\n'),
       ),
     ].join('\n');
+  },
+};
+
+/** An email's attachment, to the user's phone (and its text to the model). Reading only: no approval. */
+const mailAttachment: Tool = {
+  name: 'gmail_attachment',
+  group: 'mail',
+  label: 'קובץ מצורף ממייל',
+  description:
+    'Get a file attached to an email (an invoice, a receipt, a document) and give it to the user as a file they can open and save on the phone. ' +
+    'Also returns its text, if it has any. id from gmail_search or gmail_read; name: the file name as gmail_read lists it (optional when there is only one).',
+  params: {
+    id: { type: 'string', description: 'Message id from gmail_search or gmail_read', maxLength: 100 },
+    name: { type: 'string', description: 'The attachment file name, as gmail_read lists it', maxLength: 200 },
+  },
+  required: ['id'],
+  requiresApproval: false,
+  summarize: (a) => `הוריד את ${a.name || 'הקובץ המצורף'}`,
+  chip: () => '📎 הוריד קובץ מצורף',
+  async run(args, ctx) {
+    if (!ctx.saveFile) throw new ToolInputError('אי אפשר לשמור קבצים כרגע.');
+    const file = await googleOp(ctx, (g) => g.mailAttachment(args.id, args.name || undefined));
+    let saved;
+    try {
+      saved = await ctx.saveFile(file.name, file.bytes, 'mail', ctx.conversationId);
+    } catch (err) {
+      throw new ToolInputError(`את ${file.name} אי אפשר להוריד: ${(err as Error).message}`);
+    }
+    const a = saved.attachment;
+    const size = a.size >= 1024 * 1024 ? `${(a.size / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(a.size / 1024))}KB`;
+    const text = saved.text ? `\n${fenceMail(`הקובץ ${a.name}`, saved.text.slice(0, 6000) + (saved.text.length > 6000 ? '\n…(קוצר)' : ''))}` : '';
+    return {
+      text: `הקובץ ${a.name} (${size}) מוצג למשתמש בשיחה: אפשר לפתוח אותו ולשמור אותו בטלפון ("שיתוף / שמירה").${text}`,
+      display: { kind: 'file', upload: true, id: a.id, name: a.name, size: a.size, mime: a.mime },
+    };
   },
 };
 
@@ -1344,7 +1381,7 @@ const agentSend: Tool = {
 };
 
 export const PERSONAL_TOOLS: Tool[] = [
-  mailSearch, mailRead, mailSend, mailMarkRead,
+  mailSearch, mailRead, mailAttachment, mailSend, mailMarkRead,
   findContact,
   calendarEvents, calendarCreate,
   remindersList, reminderCreate, reminderDone,

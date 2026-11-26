@@ -404,7 +404,7 @@ test('a reply that says "sent" when nothing ran gets a warning, kept with the re
 
 test('always in the cloud: every conversation, complex or not; the Mac when asked', async () => {
   const f = await brain(undefined, 'cloud');
-  const a = await f.chat('מה השעה?');
+  const a = await f.chat('מה השעה בטוקיו?');
   assert.equal(a.done.engine, 'cloud');
   assert.match(sent[0].body.messages[0].content, /אתה עונה עכשיו דרך GPT-6 Luna בענן/);
   const b = await f.chat('תסכם לי את ההבדלים בין שתי ההצעות');

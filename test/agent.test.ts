@@ -9,14 +9,15 @@ import { DatabaseSync } from 'node:sqlite';
 import { loadConfig } from '../server/config.ts';
 import { openDb } from '../server/db.ts';
 import { createApp } from '../server/app.ts';
-import { shouldThink } from '../server/agent.ts';
+import { LOCAL_MAX_TOKENS, quickAnswer, shouldThink, watchdog } from '../server/agent.ts';
 
 // ---------- scripted fake Ollama ----------
 interface OllamaRequest {
   model: string;
   think?: boolean;
   tools?: { function: { name: string } }[];
-  messages: { role: string; content: string; tool_name?: string; tool_calls?: unknown[] }[];
+  messages: { role: string; content: string; tool_name?: string; tool_calls?: { function: { name: string } }[] }[];
+  options?: { num_predict?: number };
 }
 const requests: OllamaRequest[] = [];
 const INSTALLED = ['gemma4:e4b', 'other:1b'];
@@ -50,6 +51,12 @@ const fakeOllama = createServer(async (req, res) => {
   if (text.includes('שעה')) return call('get_datetime', {});
   if (text.includes('התראה')) return call('mac_notification', { text: 'שלום', title: 'בדיקה' });
   if (text.includes('שבור')) return call('no_such_tool', {});
+  // A model that runs on without showing anything (a tool call it never finishes): stops at the length limit.
+  if (text.includes('תקוע')) return res.end(line({ message: { content: '' }, done: true, done_reason: 'length' }));
+  if (text.includes('ארוך')) {
+    res.write(line({ message: { content: 'התחלה של תשובה ארוכה' }, done: false }));
+    return res.end(line({ message: { content: '' }, done: true, done_reason: 'length' }));
+  }
   return say('שלום!');
 });
 
@@ -134,7 +141,7 @@ const extends_ = (a: OllamaRequest, b: OllamaRequest) =>
 test('speed rule: every request in a conversation extends the previous one exactly', async () => {
   const first = await chat('היי');
   const id = first.find((e) => e.event === 'meta')!.data.conversationId;
-  await chat('מה השעה?', id); // a tool call and its result: two model requests
+  await chat('מה השעה בטוקיו?', id); // a tool call and its result: two model requests
   // A fact added in the middle of the conversation must not change what was already sent.
   await fetch(`${base}/api/memories`, { method: 'POST', headers: headers(), body: JSON.stringify({ text: 'המשתמש אוהב קפה שחור' }) });
   await chat('ומה עוד?', id);
@@ -161,8 +168,54 @@ test('speed rule: a long conversation drops old messages rarely, in one step', a
   assert.equal(requests.at(-1)!.messages[1].role, 'user', 'the window starts at a user message');
 });
 
+test('"מה השעה?" is answered from the Mac\'s clock at once, without the model', async () => {
+  requests.length = 0;
+  const evs = await chat('מה השעה?');
+  assert.equal(requests.length, 0, 'no model request');
+  assert.equal(evs.find((e) => e.event === 'tool')?.data.tool, 'get_datetime');
+  assert.match(textOf(evs), /^השעה \d{2}:\d{2}\.$/);
+  const id = evs.find((e) => e.event === 'meta')!.data.conversationId;
+  // Kept as a clock check in the history, so the model doesn't learn to guess the time.
+  await chat('תודה', id);
+  const msgs = requests.at(-1)!.messages;
+  assert.ok(msgs.some((m) => m.role === 'assistant' && m.tool_calls?.[0]?.function.name === 'get_datetime'));
+  assert.equal(quickAnswer('מה השעה עכשיו?', new Date('2026-11-23T19:27:00Z')), 'השעה 21:27.');
+  assert.match(quickAnswer('איזה יום היום?', new Date('2026-11-23T19:27:00Z'))!, /^היום יום שני, 23 בנובמבר 2026\.$/);
+  assert.equal(quickAnswer('מה השעה בטוקיו?'), null);
+  assert.equal(quickAnswer('תזכיר לי בשעה 8'), null);
+});
+
+test('a local model that runs on without an answer ends in a clear message, not silence', async () => {
+  const stuck = await chat('אתה תקוע?');
+  const err = stuck.find((e) => e.event === 'error');
+  assert.match(String(err?.data.message), /המודל המקומי נתקע/);
+  assert.equal(requests.at(-1)!.options?.num_predict, LOCAL_MAX_TOKENS, 'a length limit on every local answer');
+  const long = await chat('תכתוב משהו ארוך');
+  assert.match(textOf(long), /^התחלה של תשובה ארוכה\n\n\(התשובה נקטעה/);
+});
+
+test('the watchdog stops a silent request, and a word resets it', async () => {
+  const labels: string[] = [];
+  const w = watchdog(new AbortController().signal, (l) => labels.push(l), false, { first: 40, silence: 40 });
+  await new Promise((r) => setTimeout(r, 25));
+  w.heard();
+  await new Promise((r) => setTimeout(r, 25));
+  assert.equal(w.fired, false, 'a word came in time');
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(w.fired, true);
+  assert.equal(w.signal.aborted, true);
+  w.stop();
+  // Stopping by the user is not a stall.
+  const user = new AbortController();
+  const w2 = watchdog(user.signal, () => {}, false, { first: 1000, silence: 1000 });
+  user.abort();
+  assert.equal(w2.signal.aborted, true);
+  assert.equal(w2.fired, false);
+  w2.stop();
+});
+
 test('read-only tool runs by itself and the model reports the result', async () => {
-  const evs = await chat('מה השעה עכשיו?');
+  const evs = await chat('מה השעה עכשיו בטוקיו?');
   const tool = evs.find((e) => e.event === 'tool');
   assert.equal(tool?.data.tool, 'get_datetime');
   assert.equal(tool?.data.ok, true);
@@ -291,7 +344,7 @@ test('migration keeps stage-0 conversations', () => {
   old.close();
 
   const migrated = openDb(path);
-  assert.equal(migrated.schemaVersion(), 5);
+  assert.equal(migrated.schemaVersion(), 6);
   assert.equal(migrated.listMessages('c1')[0].attachments, null, 'old messages have no attachments');
   const msgs = migrated.listMessages('c1');
   assert.deepEqual(msgs.map((m) => m.content), ['שלום', 'היי']);
@@ -302,7 +355,7 @@ test('migration keeps stage-0 conversations', () => {
   migrated.close();
   // Opening again is a no-op.
   const again = openDb(path);
-  assert.equal(again.schemaVersion(), 5);
+  assert.equal(again.schemaVersion(), 6);
   again.close();
 });
 

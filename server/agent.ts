@@ -16,6 +16,12 @@ export interface Settings {
 }
 
 const MAX_STEPS = 6;
+/** Longest local answer (tokens). Stops a model that runs on without end (once: 2 minutes, nothing shown). */
+export const LOCAL_MAX_TOKENS = 1500;
+/** No word from the local model this long (reading a long conversation with a photo takes ~45 s): stop it. */
+export const LOCAL_FIRST_WORD_MS = 150_000;
+/** Silence after it started writing. */
+export const LOCAL_SILENCE_MS = 45_000;
 
 interface Personal {
   on: PersonalGroup[];
@@ -37,12 +43,63 @@ export const INTENTS: Record<PersonalGroup, RegExp> = {
   calendar: /יומן|לוח ה?שנה|calendar|פגיש|אירוע|לקבוע|תקבע|קבע לי|תזמן|פנוי|לו["״]?ז|מה יש לי|מה מתוכנן/i,
   reminders: /תזכורת|תזכורות|תזכיר|להזכיר|reminder|משימות|מטלות/i,
   notes: /פתק|notes|לרשום|תרשום|רשום לי/i,
-  messages: /הודעה|הודעת|הודעות|\bsms\b|סמס|imessage|מסרון/i,
+  // "תשלח לחננאל ש…", "תכתוב לו", "תגיד לאמא ש…": writing to someone, even without the word "הודעה".
+  // Not "תכתוב לי" / "תשלח לנו" (that's for the user). Mail requests also bring this group (harmless).
+  messages:
+    /הודע|\bsms\b|סמס|i\s*-?m[ae]ss?age|איי?מסג|מסרון|\btext (?:him|her|them)\b|(?:^|[\s,.])(?:ת?שלחי?|ת?כתוב|תכתבי|כתבי|תודיע|תגידי?|תעדכן)\s+ל(?!(?:י|נו)(?:[\s.,!?]|$))[א-תa-z]/i,
   agents: /קלוד|claude|קודקס|codex|סוכן הקוד|סוכני הקוד|הסוכן/i,
   camera: /מצלמ|תצלם|צלם לי|לצלם|תמונה מה?מק|camera|webcam|מה קורה בבית|מה רואים בבית/i,
 };
 /** Kept for older callers: mail, calendar or contacts. */
 export const GOOGLE_INTENT = new RegExp([INTENTS.mail.source, INTENTS.calendar.source, INTENTS.contacts.source].join('|'), 'i');
+
+/** "מה השעה?", "איזה יום היום?": answered from the Mac's clock at once, without the model (which can take 15 s). */
+const TIME_ASK = /^\s*(?:(?:תגידי?|אמור|תאמר)\s+לי\s+)?(?:מה|כמה)\s+ה?שעה(?:\s+(?:עכשיו|כרגע|בארץ|אצלנו|בישראל))?\s*[?!.]*\s*$|^\s*what(?:'s| is) the time(?: now)?\s*\??\s*$|^\s*what time is it(?: now)?\s*\??\s*$/i;
+const DATE_ASK = /^\s*(?:(?:תגידי?|אמור)\s+לי\s+)?(?:מה\s+ה?תאריך|איזה\s+(?:יום|תאריך))(?:\s+(?:היום|עכשיו))?\s*[?!.]*\s*$|^\s*what(?:'s| is) (?:the date|today)(?: today)?\s*\??\s*$/i;
+
+/**
+ * Stops a local request that went silent: no first word within LOCAL_FIRST_WORD_MS (reading a long
+ * conversation), or a pause of LOCAL_SILENCE_MS once it started. Meanwhile it tells the phone it's still working.
+ */
+export function watchdog(
+  parent: AbortSignal,
+  progress: (label: string) => void,
+  photo = false,
+  limits = { first: LOCAL_FIRST_WORD_MS, silence: LOCAL_SILENCE_MS },
+) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  parent.addEventListener('abort', onAbort, { once: true });
+  const startedAt = Date.now();
+  let heardAny = false;
+  let fired = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { fired = true; controller.abort(); }, ms);
+  };
+  arm(limits.first);
+  // A slow first word is usually the Mac reading the conversation: say so, so it doesn't look stuck.
+  const tick = setInterval(() => {
+    if (heardAny) return;
+    const s = Math.round((Date.now() - startedAt) / 1000);
+    progress(photo ? `מסתכל על התמונה במק (${s} שנ׳, זה יכול לקחת עד דקה)…` : `המודל במק עדיין קורא את השיחה (${s} שנ׳)…`);
+  }, 10_000);
+  return {
+    signal: controller.signal,
+    get fired() { return fired; },
+    heard() { heardAny = true; arm(limits.silence); },
+    stop() { clearTimeout(timer); clearInterval(tick); parent.removeEventListener('abort', onAbort); },
+  };
+}
+
+export function quickAnswer(text: string, now = new Date()): string | null {
+  const time = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+  const date = now.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+  if (TIME_ASK.test(text)) return `השעה ${time}.`;
+  if (DATE_ASK.test(text)) return `היום ${date}.`;
+  return null;
+}
 
 /*
  * Speed rule (measured with `npm run cache` on gemma4:12b): Ollama answers fast when a request only ADDS
@@ -216,7 +273,11 @@ export function createAgent(deps: AgentDeps) {
     };
     let tainted = false;
     // The newest photos in the window are sent; older ones are mentioned, not sent again.
-    const imagesInWindow = window.flatMap((m) => (m.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.id));
+    // On the Mac, only this turn's photos: Ollama can't reuse its cache for a request with a photo, so
+    // an old photo kept in the history would make every later message re-read the whole conversation.
+    const lastUserAt = window.findLastIndex((m) => m.role === 'user');
+    const photoPool = allow ? window : window.slice(Math.max(0, lastUserAt));
+    const imagesInWindow = photoPool.flatMap((m) => (m.attachments ?? []).filter((a) => a.kind === 'image').map((a) => a.id));
     const sendImage = new Set(imagesInWindow.slice(-MAX_IMAGES_IN_CONTEXT));
     const imageOf = (a: Attachment): string | null => (sendImage.has(a.id) ? (deps.imageData?.(a) ?? null) : null);
     const docBlock = (a: Attachment) => {
@@ -511,6 +572,20 @@ export function createAgent(deps: AgentDeps) {
     const state = db.getSetting<ContextState>(stateKey(conversationId), {});
     const fresh = db.lastRole(conversationId) === 'user';
     const text = fresh ? (db.lastUserText(conversationId) ?? '') : '';
+
+    // "מה השעה?": from the Mac's clock, at once. Saved as a get_datetime call, like the model would do it,
+    // so the model keeps checking the clock instead of learning to guess the time from the history.
+    const quick = fresh && !opts.engine ? quickAnswer(text) : null;
+    if (quick) {
+      const quickTag = { model: localModel, engine: 'local' as Engine, thinking: false };
+      db.addMessage(conversationId, 'assistant', '', { ...quickTag, toolCalls: [{ name: 'get_datetime', arguments: {} }] });
+      await runTool(conversationId, 'get_datetime', {}, emit);
+      emit('delta', { text: quick });
+      const saved = db.addMessage(conversationId, 'assistant', quick, quickTag);
+      db.audit('chat', { deviceId: opts.deviceId, conversationId, engine: 'local', model: 'clock', quick: true, sentToCloud: false, ms: Date.now() - started });
+      emit('done', { messageId: saved.id, ...quickTag, totalMs: Date.now() - started });
+      return;
+    }
     const asked: Engine | undefined = opts.engine ?? (!fresh ? undefined : LOCAL_ASK.test(text) ? 'local' : CLOUD_ASK.test(text) ? 'cloud' : undefined);
     const ready = cloudReady();
     let engine: Engine = asked ?? state.engine ?? preferred();
@@ -568,6 +643,11 @@ export function createAgent(deps: AgentDeps) {
         ...extra,
       });
     const cloudHint = () => (!cloud && ready.ok ? ' אפשר לנסות בענן: כתוב "תעבור לענן".' : '');
+    const stalled = (partial: string) => {
+      if (partial.trim()) db.addMessage(conversationId, 'assistant', partial, tag);
+      audit({ stalled: true, ms: Date.now() - started });
+      return new OllamaError('local model stalled', 'המודל המקומי נתקע ולא סיים לענות, אז עצרתי אותו.' + (cloudHint() || ' נסה שוב, או נסח בקצרה.'));
+    };
 
     for (let step = 0; step < MAX_STEPS; step++) {
       emit('progress', {
@@ -586,30 +666,37 @@ export function createAgent(deps: AgentDeps) {
         emit('delta', { text: piece });
       };
       tag.thinking = think;
+      // On the Mac: a watchdog, so a stuck model ends in a clear message instead of waiting forever.
+      const localHistory = cloud ? [] : history(conversationId, personal);
+      const watch = cloud ? undefined : watchdog(opts.signal, (label) => emit('progress', { label }), localHistory.some((m) => m.images?.length));
       const stream: AsyncGenerator<StreamEvent, CloudStats> = cloud
         ? streamCloud(
             { provider: cloud.provider, model, key: cloud.key, fetch: deps.cloud?.fetch },
             history(conversationId, personal, allow, modelName(model)),
             { signal: opts.signal, tools: toolSpecs },
           )
-        : streamChat(config.ollamaUrl, model, history(conversationId, personal), {
-            signal: opts.signal,
+        : streamChat(config.ollamaUrl, model, localHistory, {
+            signal: watch!.signal,
             keepAlive: config.keepAlive,
             contextLength: config.contextLength,
             temperature: config.temperature,
             think,
             tools: toolSpecs,
+            maxTokens: LOCAL_MAX_TOKENS,
           });
       let next: IteratorResult<StreamEvent, CloudStats>;
       try {
         next = await stream.next();
         while (!next.done) {
           const ev = next.value;
+          watch?.heard();
           if (ev.type === 'text') show(ev.text);
           else calls = calls.concat(ev.calls);
           next = await stream.next();
         }
       } catch (err) {
+        watch?.stop();
+        if (watch?.fired && !opts.signal.aborted) throw stalled(reply);
         // The cloud failed before saying anything (no internet, provider down, key or limit):
         // this question is answered on the Mac, and the reason is shown under the answer.
         if (!(err instanceof CloudError) || !cloud || step > 0 || reply || opts.signal.aborted) throw err;
@@ -625,8 +712,15 @@ export function createAgent(deps: AgentDeps) {
         step--;
         continue;
       }
+      watch?.stop();
+      if (watch?.fired && !opts.signal.aborted) throw stalled(reply);
       const stats = next.value;
       readMs += stats.promptMs ?? 0;
+      // It hit the length limit: a long answer is kept with a note; nothing at all means it ran in circles.
+      if (!cloud && stats.truncated) {
+        if (!reply.trim() && !calls.length) throw stalled('');
+        if (!calls.length) show('\n\n(התשובה נקטעה כי הייתה ארוכה מדי. אפשר לבקש "תמשיך".)');
+      }
       if (cloud) {
         usage.input += (stats.inputTokens ?? 0) + (stats.cachedTokens ?? 0);
         usage.output += stats.outputTokens ?? 0;

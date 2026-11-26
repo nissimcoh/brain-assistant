@@ -56,6 +56,8 @@ const MESSAGES: Record<string, unknown> = {
   },
 };
 
+const INVOICE = Buffer.from('%PDF-1.4\nחשבונית מס 1042: 120 ש"ח\n%%EOF');
+
 const WORK_MAIL = {
   id: 'w1', threadId: 'tw1', labelIds: ['INBOX', 'UNREAD'], snippet: 'נשמח לקבוע ראיון', internalDate: String(Date.parse('2026-11-21T08:00:00Z')),
   payload: {
@@ -115,6 +117,8 @@ const fakeGoogle = createServer(async (req, res) => {
     res.writeHead(204);
     return res.end();
   }
+  // The invoice attached to m1: a small real-looking PDF.
+  if (p === '/gmail/messages/m1/attachments/a1') return json(200, { size: INVOICE.length, data: b64u(INVOICE) });
   if (p.startsWith('/gmail/messages/')) {
     const m = MESSAGES[decodeURIComponent(p.split('/').pop()!)];
     return m ? json(200, m) : json(404, { error: { message: 'Not Found' } });
@@ -211,6 +215,7 @@ const fakeOllama = createServer(async (req, res) => {
   if (t.includes('ביומן')) return call('calendar_events', { when: '22.11' });
   if (t.includes('תשלח')) return call('gmail_send', { to: 'danny@example.com', subject: 'איחור', body: 'אני מאחר בעשר דקות' });
   if (t.includes('תסמן')) return call('gmail_mark_read', { query: 'is:unread' });
+  if (t.includes('חשבונית')) return call('gmail_attachment', { id: '1:m1', name: 'חשבונית.pdf' });
   if (t.includes('תקבע')) return call('calendar_create', { title: 'רופא שיניים', date: 'יום שלישי', start: '10:00' });
   say('בסדר.');
 });
@@ -773,4 +778,32 @@ test('when mail joins a long conversation, old file contents are shortened in th
   await chat('יש לי מיילים מהבנק?', first.id);
   const sizes = requests.at(-1)!.messages.filter((m) => m.role === 'tool').map((m) => m.content.length);
   assert.ok(Math.max(...sizes) < 2000, 'the old file was shortened when the mail tools joined');
+});
+
+test('an attachment: by its name, or the only one; a mail without one says so', async () => {
+  const g = connected();
+  const file = await g.mailAttachment('1:m1', 'חשבונית.pdf');
+  assert.equal(file.name, 'חשבונית.pdf');
+  assert.equal(file.mime, 'application/pdf');
+  assert.deepEqual(file.bytes, INVOICE);
+  assert.deepEqual((await g.mailAttachment('m1')).bytes, INVOICE, 'the only attachment, without a name');
+  assert.deepEqual((await g.mailAttachment('1:m1', 'חשבונית')).bytes, INVOICE, 'part of the name is enough');
+  await assert.rejects(g.mailAttachment('1:m2'), (e: GoogleError) => e.userMessage === 'אין במייל הזה קבצים מצורפים.');
+  await assert.rejects(g.mailAttachment('1:m1', 'קבלה.pdf'), (e: GoogleError) => /חשבונית\.pdf\. איזה מהם\?/.test(e.userMessage));
+});
+
+test('"download the invoice": the file reaches the phone in the conversation, and its text reaches the model', async () => {
+  const b = await brain(connected());
+  const r = await b.chat('תוריד לי את החשבונית מהמייל של הבנק');
+  const tool = r.evs.find((e) => e.event === 'tool')!.data as { tool: string; ok: boolean; display: { kind: string; upload: boolean; id: string; name: string } };
+  assert.equal(tool.tool, 'gmail_attachment');
+  assert.equal(tool.ok, true, 'no approval needed: it only reads');
+  assert.deepEqual([tool.display.kind, tool.display.upload, tool.display.name], ['file', true, 'חשבונית.pdf']);
+  const back = await fetch(`${b.base}/api/uploads/${tool.display.id}`, { headers: b.H });
+  assert.equal(back.headers.get('content-type'), 'application/pdf');
+  assert.deepEqual(Buffer.from(await back.arrayBuffer()), INVOICE);
+  // The model was told where the file is (on Linux there's no PDF text to read; on the Mac PDFKit reads it).
+  const toolMsg = requests.at(-1)!.messages.findLast((m) => m.role === 'tool')!;
+  assert.match(toolMsg.content, /הקובץ חשבונית\.pdf .* מוצג למשתמש בשיחה/);
+  assert.equal(b.db.uploadsOf(r.id)[0].source, 'mail');
 });

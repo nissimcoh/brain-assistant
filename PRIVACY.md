@@ -73,8 +73,8 @@ OpenAI does not use API data for training, and keeps abuse-monitoring logs for u
 
 ### Google: only your own account, only what a request needs
 
-When you connect Google, Brain uses the Gmail, Google Calendar and People APIs to search and read your mail, read your
-calendars and contacts, and, after your approval, send mail, mark mail as read and create events.
+When you connect Google, Brain uses the Gmail, Google Calendar and People APIs to search and read your mail (and fetch an
+attachment you ask for, which is then kept with that conversation like a file you sent), read your calendars and contacts, and, after your approval, send mail, mark mail as read and create events.
 It talks to Google directly from your Mac; no other server is involved. Brain does not sell Google user data,
 does not use it for advertising, and does not let humans read it. It is used only to answer your requests,
 shown to you in the app, and sent to a cloud model only if you allow "mail" (for Gmail) or "calendar…" (for calendar and contacts).

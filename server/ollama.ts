@@ -23,6 +23,8 @@ export interface StreamStats {
   outputTokens?: number;
   /** Output tokens per second, as measured by Ollama. */
   tokensPerSecond?: number;
+  /** It stopped at the length limit (maxTokens), not because the answer was done. */
+  truncated?: boolean;
 }
 
 export class OllamaError extends Error {
@@ -166,6 +168,7 @@ export async function* streamChat(
       prompt_eval_duration?: number;
       eval_count?: number;
       eval_duration?: number;
+      done_reason?: string;
     };
     if (obj.error) throw toOllamaError(new Error(obj.error), baseUrl, model);
     if (obj.done) {
@@ -175,6 +178,7 @@ export async function* streamChat(
         outputTokens: obj.eval_count,
         tokensPerSecond:
           obj.eval_count && obj.eval_duration ? obj.eval_count / (obj.eval_duration / 1e9) : undefined,
+        ...(obj.done_reason === 'length' ? { truncated: true } : {}),
       };
     }
     const events: StreamEvent[] = [];

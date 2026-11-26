@@ -672,6 +672,35 @@ export function createGoogle(o: GoogleOptions) {
     };
   }
 
+  /**
+   * One attachment of an email (an invoice, a receipt…), by its file name. With no name, the only one.
+   * Read-only: the file comes to the Mac; nothing changes in the mailbox.
+   */
+  async function mailAttachment(fullId: string, name?: string): Promise<{ name: string; mime: string; bytes: Buffer }> {
+    const { acc, id } = await byId(fullId);
+    const m = await api<{ payload: Part }>(acc, `${ep.gmail}/messages/${encodeURIComponent(id)}?format=full`);
+    const files: Part[] = [];
+    const walk = (p: Part) => {
+      if (p.filename && (p.body?.attachmentId || p.body?.data)) files.push(p);
+      for (const c of p.parts ?? []) walk(c);
+    };
+    walk(m.payload);
+    if (!files.length) throw new GoogleError('no attachment', 'אין במייל הזה קבצים מצורפים.');
+    const wanted = (name ?? '').trim().toLowerCase();
+    const part = !wanted
+      ? files.length === 1 ? files[0] : undefined
+      : (files.find((p) => p.filename!.toLowerCase() === wanted) ?? files.find((p) => p.filename!.toLowerCase().includes(wanted)));
+    if (!part) {
+      throw new GoogleError('which attachment', `במייל יש ${files.length} קבצים מצורפים: ${files.map((p) => p.filename).join(', ')}. איזה מהם?`);
+    }
+    let data = part.body?.data;
+    if (!data) {
+      const a = await api<{ data: string }>(acc, `${ep.gmail}/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.body!.attachmentId!)}`);
+      data = a.data;
+    }
+    return { name: part.filename!, mime: part.mimeType ?? 'application/octet-stream', bytes: b64url(data) };
+  }
+
   async function sendMail(m: { to: string; subject: string; body: string; replyTo?: string; account?: string }) {
     const to = parseRecipients(m.to);
     if (!m.body.trim()) throw new GoogleError('empty body', 'תוכן המייל ריק.');
@@ -923,7 +952,7 @@ export function createGoogle(o: GoogleOptions) {
 
   return {
     status, available, disconnect, saveAccount, profileEmail, knownAccounts, cardAccount,
-    searchMail, readMail, sendMail, markRead, findContacts, listEvents, createEvent,
+    searchMail, readMail, mailAttachment, sendMail, markRead, findContacts, listEvents, createEvent,
     endpoints: ep, now,
   };
 }

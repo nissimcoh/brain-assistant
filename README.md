@@ -56,7 +56,7 @@ and happens only after you tap **Approve**.
 
 | Area | Brain can… | Needs your approval |
 | --- | --- | --- |
-| **Mail (Gmail)** | Search and read mail across several accounts, find contacts | Sending, replying, marking as read |
+| **Mail (Gmail)** | Search and read mail across several accounts, download attachments (an invoice, a receipt) to the phone, find contacts | Sending, replying, marking as read |
 | **Calendar** | Read the iPhone/Mac calendar (iCloud) and Google Calendar together | Creating an event |
 | **Reminders** | List open reminders | Creating one (it rings on the iPhone) or completing one |
 | **Notes** | Search and read Apple Notes | Creating a note |

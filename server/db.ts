@@ -45,8 +45,8 @@ export interface Attachment {
   name: string;
   mime: string;
   size: number;
-  /** Where it came from: the phone, or the Mac's own camera (never sent to the cloud). */
-  source: 'phone' | 'camera';
+  /** Where it came from: the phone, an email's attachment, or the Mac's own camera (never sent to the cloud). */
+  source: 'phone' | 'camera' | 'mail';
 }
 
 export interface Upload extends Attachment {
@@ -221,6 +221,25 @@ const MIGRATIONS: string[] = [
     text TEXT,
     created_at INTEGER NOT NULL
   );
+  CREATE INDEX uploads_by_conversation ON uploads (conversation_id);
+  `,
+  // v6 — attachments fetched from email are kept like uploads (source 'mail').
+  `
+  CREATE TABLE uploads_v6 (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    conversation_id TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'file')),
+    source TEXT NOT NULL DEFAULT 'phone' CHECK (source IN ('phone', 'camera', 'mail')),
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    text TEXT,
+    created_at INTEGER NOT NULL
+  );
+  INSERT INTO uploads_v6 SELECT id, device_id, conversation_id, kind, source, name, mime, size, text, created_at FROM uploads;
+  DROP TABLE uploads;
+  ALTER TABLE uploads_v6 RENAME TO uploads;
   CREATE INDEX uploads_by_conversation ON uploads (conversation_id);
   `,
 ];

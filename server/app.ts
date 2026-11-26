@@ -19,7 +19,7 @@ import { createWeb, type Web } from './web.ts';
 import { randomUUID } from 'node:crypto';
 import { createToolRegistry, defaultExec, type Exec, snippet, sensitiveReason, MAX_MEMORIES, type ToolContext, ToolInputError, type ToolRegistry } from './tools.ts';
 
-export const VERSION = '0.17.0';
+export const VERSION = '0.17.2';
 
 const MAX_MEMORY_CHARS = 500;
 
@@ -247,6 +247,18 @@ export function createApp(
               }))),
     // The Mac's camera, through Brain Helper (it holds the camera permission). Never the real one inside tests.
     camera: options.camera === null ? undefined : (options.camera ?? undefined),
+    // A file kept with the conversation (an email's attachment): shown to the phone, its text to the model.
+    saveFile: async (name, bytes, source, conversationId) => {
+      let saved;
+      try {
+        saved = await uploads.save(source === 'mail' ? 'mail' : 'mac', name, bytes, source, conversationId);
+      } catch (err) {
+        if (err instanceof UploadError) throw new Error(err.message);
+        throw err;
+      }
+      db.audit('file.saved', { source, uploadId: saved.id, name: saved.name, size: saved.size, conversationId });
+      return { attachment: uploads.attachment(saved), text: saved.text };
+    },
     // A file sent to the phone stays with the conversation: the app asks for it again by this id.
     keepSent: (file) => {
       const id = randomUUID();
@@ -340,6 +352,7 @@ export function createApp(
   let preparing: Promise<void> | null = null;
   let warmController: AbortController | null = null;
   let lastPrefixWarm = 0;
+  let warmingPrefix = false;
   let activeChats = 0;
   function prepare(newConversation: boolean, reason: string): Promise<void> {
     if (preparing || activeChats) return preparing ?? Promise.resolve();
@@ -370,7 +383,8 @@ export function createApp(
         }
         // Not over and over, unless naming just pushed the warm start out of the cache.
         if (activeChats > 0 || controller.signal.aborted || (!named && Date.now() - lastPrefixWarm < 20_000)) return;
-        const r = await agent.warm(controller.signal);
+        warmingPrefix = true;
+        const r = await agent.warm(controller.signal).finally(() => { warmingPrefix = false; });
         if (controller.signal.aborted) return;
         lastPrefixWarm = Date.now();
         console.log(`[warm] ${reason}: ההוראות נקראו מראש (${r.promptTokens ?? '?'} טוקנים, ${((r.promptMs ?? 0) / 1000).toFixed(1)} שנ׳)`);
@@ -515,7 +529,9 @@ export function createApp(
       emit(event, data);
     };
     activeChats++;
-    warmController?.abort();
+    // The first message of a new conversation needs exactly the start the warm-up is reading: let it
+    // finish (Ollama answers right after it, from its cache). Stopping it would throw ~15 s of reading away.
+    if (!(warmingPrefix && db.listMessages(conversationId).length <= 1)) warmController?.abort();
     try {
       await agent.run(conversationId, report, { think, deviceId: device.id, signal: controller.signal, autoThinking: settings().thinking === 'auto', engine });
     } catch (err) {

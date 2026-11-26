@@ -215,6 +215,11 @@ test('a photo and a document go with the message: the photo to the model, the do
   // The app gets the attachments back with the conversation.
   const conv = (await (await fetch(`${base}/api/conversations/${r.id}`, { headers: H })).json()) as { messages: { role: string; attachments: { id: string; kind: string }[] | null }[] };
   assert.deepEqual(conv.messages[0].attachments!.map((a) => a.kind), ['image', 'file']);
+  // The next message on the Mac doesn't send the photo again (Ollama can't reuse its cache with a photo in it).
+  await chat({ text: 'ומה עוד?', conversationId: r.id });
+  const later = requests.at(-1)!.messages;
+  assert.ok(later.every((m) => !m.images), 'only this turn\'s photos on the Mac');
+  assert.match(later.find((m) => m.role === 'user')!.content, /צורפה כאן תמונה \(כבר לא מוצגת למודל\)/);
   // An upload belongs to one conversation.
   const again = await fetch(`${base}/api/chat`, { method: 'POST', headers: H, body: JSON.stringify({ text: 'שוב', attachments: [photo.id] }) });
   assert.equal(again.status, 409);

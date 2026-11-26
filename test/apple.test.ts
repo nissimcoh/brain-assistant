@@ -221,6 +221,12 @@ test('which words bring which tools', () => {
   assert.deepEqual(groups('מה יש לי מחר?'), ['calendar']);
   assert.deepEqual(groups('יש לי מיילים חדשים?'), ['mail']);
   assert.deepEqual(groups('מה השעה?'), []);
+  // Writing to someone, even without the word "הודעה" (and with a typo in "iMessage").
+  assert.deepEqual(groups('תשלח לחננאל אחי שאני בדרך אליו'), ['messages']);
+  assert.deepEqual(groups('תכתוב לו דרך imassage'), ['messages']);
+  assert.deepEqual(groups('תגיד לאמא שאני מאחר'), ['messages']);
+  assert.deepEqual(groups('תכתוב לי שיר על הים'), [], '"לי" is the user');
+  assert.deepEqual(groups('תשלח לי את הקובץ'), []);
   assert.deepEqual(groups('תזכור שאני אוהב קפה'), [], '"תזכור" (memory) is not a reminder');
 });
 
@@ -308,6 +314,17 @@ test('a message: number from the card, iMessage first, SMS when there is no iMes
   assert.match(sent[1], /service type = SMS/);
   assert.match(sent[1], /participant "\+972501234567"/);
   assert.match(sent[1], /send "אני מגיע בעוד רבע שעה" to p/);
+});
+
+test('"תשלח לחננאל ש…" without the word "הודעה": the message tools are offered, and the model is told it can send', async () => {
+  const { chat } = await brain({ apple: fakeApple() });
+  requests.length = 0;
+  await chat('תשלח לחננאל אחי שאני בדרך אליו');
+  const names = toolNames(requests[0]);
+  assert.ok(names.includes('message_send') && names.includes('find_contact'));
+  const system = requests[0].messages[0].content;
+  assert.match(system, /הודעה רגילה \(iMessage או SMS\) מהמק עם message_send/);
+  assert.doesNotMatch(system, /אין לך גישה להודעות\. אם מבקשים/);
 });
 
 test('contacts: phone from the Mac, email from Google, no duplicates', async () => {
