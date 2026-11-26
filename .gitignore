@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+# Personal files (e.g. facts to import into memory): never in the repository
+private/
+# Model comparison reports (machine-specific)
+reports/

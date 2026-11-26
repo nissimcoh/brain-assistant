@@ -1,0 +1,30 @@
+{
+  "name": "brain",
+  "version": "0.15.0",
+  "private": true,
+  "description": "עוזר אישי בעברית שרץ על המק ומדברים איתו מהטלפון",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/main.ts",
+    "pair": "node --disable-warning=ExperimentalWarning scripts/pair.ts",
+    "google:connect": "node --disable-warning=ExperimentalWarning scripts/google-connect.ts",
+    "apple:setup": "node --disable-warning=ExperimentalWarning scripts/apple-setup.ts",
+    "web:key": "node --disable-warning=ExperimentalWarning scripts/web-key.ts",
+    "cloud:key": "node --disable-warning=ExperimentalWarning scripts/cloud-key.ts",
+    "memory:import": "node --disable-warning=ExperimentalWarning scripts/memory-import.ts",
+    "agents:probe": "node --disable-warning=ExperimentalWarning scripts/agents-probe.ts",
+    "bench": "node scripts/bench.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "service:install": "bash scripts/install-service.sh",
+    "service:uninstall": "bash scripts/uninstall-service.sh",
+    "service:logs": "tail -n 50 -f ~/.brain/logs/brain.log",
+    "remote:enable": "bash scripts/tailscale-serve.sh",
+    "speed": "node --disable-warning=ExperimentalWarning scripts/speed.ts",
+    "compare": "node --disable-warning=ExperimentalWarning scripts/compare.ts",
+    "cache": "node --disable-warning=ExperimentalWarning scripts/cache.ts",
+    "doctor": "node --disable-warning=ExperimentalWarning scripts/doctor.ts"
+  }
+}

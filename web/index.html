@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#eef1f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d0f17" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Brain" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Brain</title>
+  </head>
+  <body>
+    <div id="startup" role="status"><img src="/icon.svg" alt="" width="72" height="72" class="startup-logo" /><strong>בריין</strong><p>מתחבר למק…</p><a href="./">נסה שוב</a></div>
+    <!-- Pairing -->
+    <section id="pair-screen" class="screen" hidden>
+      <div class="pair-card">
+        <img src="/icon.svg" alt="" class="pair-logo" width="72" height="72" />
+        <h1>חיבור לבריין</h1>
+        <p class="muted">במק, הרץ בטרמינל <code dir="ltr">npm run pair</code> והקלד כאן את הקוד שמופיע.</p>
+        <form id="pair-form" autocomplete="off">
+          <label for="pair-code">קוד צימוד</label>
+          <input id="pair-code" inputmode="numeric" dir="ltr" placeholder="1234-5678" maxlength="9" required />
+          <label for="pair-name">שם המכשיר</label>
+          <input id="pair-name" value="אייפון" maxlength="60" required />
+          <button type="submit" class="primary">חיבור</button>
+          <p id="pair-error" class="error" role="alert" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Chat -->
+    <section id="chat-screen" class="screen" hidden>
+      <header class="topbar">
+        <button id="menu-btn" class="icon-btn" aria-label="שיחות קודמות" title="שיחות קודמות"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M15 4v16"/></svg></button>
+        <div class="title-wrap">
+          <h1 id="chat-title">שיחה חדשה</h1>
+          <button type="button" id="mac-status" class="mac-status" aria-label="פתיחת המק שלי" aria-live="polite">
+            <span class="dot" aria-hidden="true"></span><span id="mac-status-text">בודק חיבור…</span>
+          </button>
+        </div>
+        <button id="new-btn" class="icon-btn" aria-label="שיחה חדשה" title="שיחה חדשה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.6 3.4a2 2 0 0 1 2.9 2.9L12 14.8 8.5 15.5l.7-3.5Z"/></svg></button>
+      </header>
+
+      <div id="offline-banner" class="banner" role="status" hidden><span id="offline-message"></span><button id="retry-mac" type="button" hidden>נסה שוב</button></div>
+
+      <main id="messages" class="messages" aria-live="polite">
+        <div id="empty" class="empty">
+          <img src="/icon.svg" alt="" width="64" height="64" class="empty-logo" />
+          <h2>במה אפשר לעזור?</h2>
+          <p class="muted">המודל והזיכרון רצים על המק שלך.</p>
+          <div class="suggestions">
+            <button class="suggestion" data-text="תמצא לי את קורות החיים שלי">📁 תמצא לי קובץ</button>
+            <button class="suggestion" data-text="תזכור ש">🧠 תזכור ש…</button>
+            <button class="suggestion" id="home-mac" type="button">💻 המק שלי</button>
+            <button class="suggestion" data-text="מה דיברנו על ">🔎 מה דיברנו על…</button>
+          </div>
+        </div>
+      </main>
+
+      <p id="draft-warning" class="hint" role="status" hidden>שמירת הטיוטה במכשיר נכשלה. הטקסט זמין כל עוד האפליקציה פתוחה.</p>
+      <form id="composer" class="composer">
+        <button id="engine-btn" type="button" class="engine-chip" hidden aria-label="איפה עונים: במק או בענן">מק</button>
+        <textarea id="input" rows="1" placeholder="כתוב הודעה…" enterkeyhint="send" aria-label="הודעה"></textarea>
+        <button id="send-btn" type="submit" class="send" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+        <button id="stop-btn" type="button" class="send stop" aria-label="עצירה" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.5" fill="currentColor"/></svg></button>
+      </form>
+    </section>
+
+    <!-- A file sent in a conversation -->
+    <div id="file-viewer" class="file-viewer" hidden role="dialog" aria-modal="true" aria-labelledby="file-viewer-name">
+      <header class="file-viewer-head">
+        <button id="file-viewer-close" class="icon-btn" type="button" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        <span id="file-viewer-name" dir="auto"></span>
+        <button id="file-viewer-share" class="secondary small" type="button">שיתוף / שמירה</button>
+      </header>
+      <div id="file-viewer-body" class="file-viewer-body"></div>
+    </div>
+
+    <!-- History drawer -->
+    <aside id="drawer" class="drawer" hidden>
+      <div class="drawer-panel" role="dialog" aria-label="שיחות קודמות">
+        <div class="drawer-head">
+          <h2>שיחות</h2>
+          <button id="drawer-close" class="icon-btn" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="search-wrap">
+          <input id="search-input" type="search" placeholder="חיפוש בכל השיחות…" aria-label="חיפוש בשיחות" enterkeyhint="search" />
+        </div>
+        <ul id="conversation-list" class="conversation-list"></ul>
+        <div class="drawer-foot">
+          <button id="machine-btn" class="drawer-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 19h20"/></svg>המק שלי</button>
+          <button id="memory-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z"/></svg><span>זיכרון</span></button>
+          <button id="settings-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>הגדרות</span></button>
+          <button id="activity-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>יומן פעולות</span></button>
+          <button id="unpair-btn" class="link danger">ניתוק המכשיר הזה</button>
+        </div>
+      </div>
+      <div class="drawer-backdrop" id="drawer-backdrop"></div>
+    </aside>
+
+    <aside id="machine-sheet" class="sheet" hidden>
+      <div class="sheet-panel machine-panel" role="dialog" aria-modal="true" aria-labelledby="machine-title">
+        <header class="sheet-head"><h2 id="machine-title">המק שלי</h2><button type="button" class="icon-btn sheet-close" aria-label="סגירה">×</button></header>
+        <div class="sheet-body">
+          <section class="machine-hero"><div class="machine-glyph" aria-hidden="true"><svg viewBox="0 0 80 58" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="10" y="6" width="60" height="41" rx="5"/><path d="M3 49h74l-5 4H8Z"/><path d="M19 29h10l5-10 7 18 5-10h14"/></svg></div>
+            <div><h3 id="machine-name">המק שלי</h3><span id="machine-time" class="hint"></span></div></section>
+          <p id="machine-state" role="status"></p>
+          <div id="machine-metrics" class="machine-metrics" hidden></div>
+          <div class="apps-head"><h3>אפליקציות פתוחות</h3><button class="secondary small" id="machine-refresh" type="button">רענון</button></div>
+          <ul id="machine-apps" class="machine-apps"></ul>
+          <p id="quit-note" class="hint" role="status"></p>
+          <details id="keyboard-tools"><summary>בדיקת מקלדת</summary><p class="hint">התחל, הקש על שורת הכתיבה וסגור ב־✓ תוך שש שניות. כאן יופיעו רק זמנים ומידות מסך.</p>
+            <button type="button" class="secondary small" id="keyboard-record">התחל מדידה</button>
+            <pre dir="ltr" id="keyboard-log"></pre>
+            <button type="button" class="secondary small" id="keyboard-copy" hidden>העתק מדידה</button>
+          </details>
+        </div>
+      </div><div class="sheet-backdrop"></div>
+    </aside>
+
+    <!-- Settings -->
+    <aside id="settings-sheet" class="sheet" hidden>
+      <div class="sheet-panel" role="dialog" aria-label="הגדרות">
+        <div class="sheet-head">
+          <h2>הגדרות</h2>
+          <button class="icon-btn sheet-close" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="sheet-body">
+          <section class="setting">
+            <label for="model-select">מודל מקומי</label>
+            <select id="model-select"></select>
+            <p class="hint">המודלים שמותקנים ב־Ollama במק. ההחלפה חלה מההודעה הבאה, גם באמצע שיחה.</p>
+          </section>
+          <section class="setting">
+            <span class="setting-label">חשיבה מעמיקה</span>
+            <div class="segmented" role="radiogroup" aria-label="חשיבה מעמיקה">
+              <label><input type="radio" name="thinking" value="auto" /><span>אוטומטי</span></label>
+              <label><input type="radio" name="thinking" value="off" /><span>כבוי</span></label>
+              <label><input type="radio" name="thinking" value="on" /><span>פועל</span></label>
+            </div>
+            <p class="hint" id="thinking-hint"></p>
+          </section>
+          <section class="setting">
+            <span class="setting-label">ענן</span>
+            <div class="segmented" role="radiogroup" aria-label="שימוש בענן">
+              <label><input type="radio" name="cloud-mode" value="ask" /><span>כשאני מבקש</span></label>
+              <label><input type="radio" name="cloud-mode" value="cloud" /><span>תמיד בענן</span></label>
+              <label><input type="radio" name="cloud-mode" value="local" /><span>מקומי בלבד</span></label>
+            </div>
+            <label for="cloud-provider">ספק</label>
+            <select id="cloud-provider"></select>
+            <p class="hint" id="cloud-state"></p>
+            <span class="setting-label">מה מותר לשלוח לענן</span>
+            <ul id="cloud-allow" class="access-list toggle-list"></ul>
+            <p class="hint">
+              בענן עונה מודל של הספק, אבל המפתחות, הכלים והפעולות נשארים במק. מה שכבוי כאן לא נשלח בכלל, גם לא מתוך שיחה שהתחילה במק.
+              "כשאני מבקש": המק עונה, ובמשימה מורכבת שואל אם לעבור לענן. "תמיד בענן": כל שיחה בענן, ואם הענן לא זמין עונה המק.
+              בכל מצב אפשר לכתוב "תעבור לענן" או "תחזור למק", או ללחוץ על המתג ליד תיבת ההודעה.
+            </p>
+          </section>
+          <section class="setting">
+            <span class="setting-label">גישה לקבצים במק</span>
+            <p class="hint">
+              בריין יכול לחפש, לקרוא ולשלוח קבצים מכל תיקיית הבית, חוץ ממקומות עם סודות (מפתחות, סיסמאות, נתוני דפדפנים).
+              מחיקה היא רק העברה לסל, ורק אחרי שתאשר בכרטיס. אין לו כלי שעורך קבצים.
+            </p>
+            <ul id="access-list" class="access-list"></ul>
+            <button id="access-btn" class="secondary">בדיקת גישה</button>
+            <p class="hint" id="access-hint" hidden>
+              אם תיקייה מסומנת ✗: בפעם הראשונה macOS מציג במק חלון "node רוצה גישה". צריך ללחוץ שם אישור. אם החלון לא הופיע:
+              הגדרות המערכת ← פרטיות ואבטחה ← גישה מלאה לדיסק ← ＋ ← להוסיף את הקובץ
+              <code id="node-path" dir="ltr"></code>
+              ← ואז במק: <code dir="ltr">npm run service:install</code>
+            </p>
+          </section>
+          <section class="setting">
+            <span class="setting-label">מייל ויומן (Google)</span>
+            <p class="hint" id="google-state">בודק…</p>
+            <ul id="google-accounts" class="access-list"></ul>
+            <p class="hint" id="google-help" hidden>
+              החיבור נעשה במק: בטרמינל, בתיקיית brain, להריץ <code dir="ltr">npm run google:connect</code>
+              ולאשר בדפדפן. אותה פקודה מוסיפה חשבון נוסף (למשל עבודה). ההוראות המלאות ב־TESTING.md (שלב 5).
+              ההרשאה נשמרת ב־Keychain של המק בלבד.
+            </p>
+            <p class="hint">בריין קורא מייל ויומן בלי לשאול. שליחת מייל וקביעת אירוע רק אחרי שתאשר בכרטיס.</p>
+          </section>
+          <section class="setting">
+            <span class="setting-label">יומן, תזכורות, אנשי קשר, פתקים והודעות (Apple)</span>
+            <ul id="apple-state" class="access-list"></ul>
+            <p class="hint" id="apple-help" hidden>
+              החיבור נעשה פעם אחת במק: בטרמינל, בתיקיית brain, להריץ <code dir="ltr">npm run apple:setup</code>
+              ולאשר כל חלון ש־macOS מציג. מה שמחובר במק מחובר גם לאייפון (דרך iCloud).
+            </p>
+            <p class="hint">יצירת אירוע, תזכורת, פתק או שליחת הודעה רק אחרי שתאשר בכרטיס.</p>
+          </section>
+          <p id="settings-status" class="hint" role="status"></p>
+        </div>
+      </div>
+      <div class="sheet-backdrop"></div>
+    </aside>
+
+    <!-- Memory -->
+    <aside id="memory-sheet" class="sheet" hidden>
+      <div class="sheet-panel" role="dialog" aria-label="זיכרון">
+        <div class="sheet-head">
+          <h2>זיכרון</h2>
+          <button class="icon-btn sheet-close" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="sheet-body">
+          <p class="hint">מה שבריין יודע עליך. העובדות נכנסות לכל שיחה ונשמרות רק במק. אפשר לערוך ולמחוק בכל רגע.</p>
+          <form id="memory-form" class="memory-form">
+            <input id="memory-input" placeholder="להוסיף עובדה, למשל: לאשתי קוראים מיכל" maxlength="500" />
+            <button type="submit" class="primary small">הוספה</button>
+          </form>
+          <p id="memory-status" class="hint" role="status"></p>
+          <ul id="memory-list" class="memory-list"></ul>
+        </div>
+      </div>
+      <div class="sheet-backdrop"></div>
+    </aside>
+
+    <!-- Activity log -->
+    <aside id="activity-sheet" class="sheet" hidden>
+      <div class="sheet-panel" role="dialog" aria-label="יומן פעולות">
+        <div class="sheet-head">
+          <h2>יומן פעולות</h2>
+          <button class="icon-btn sheet-close" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div>
+        <ul id="activity-list" class="activity-list sheet-body"></ul>
+      </div>
+      <div class="sheet-backdrop"></div>
+    </aside>
+
+    <!-- Confirmations in Brain's own style (instead of the browser's English OK/Cancel) -->
+    <div id="dialog" class="dialog" hidden>
+      <div class="dialog-backdrop"></div>
+      <div class="dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 id="dialog-title"></h2>
+        <p></p>
+        <div class="dialog-actions">
+          <button type="button" class="dialog-cancel"></button>
+          <button type="button" class="dialog-ok"></button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
