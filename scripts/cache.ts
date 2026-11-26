@@ -33,7 +33,7 @@ async function ask(model: string, messages: Msg[], opts: { tools?: unknown[]; ma
       stream: false,
       keep_alive: config.keepAlive,
       options: { num_ctx: config.contextLength, num_predict: opts.maxTokens },
-      ...(await modelOptions(base, model, false)),
+      ...(await modelOptions(base, model, false)).extra,
       ...(opts.tools?.length ? { tools: opts.tools } : {}),
       messages,
     }),

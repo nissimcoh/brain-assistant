@@ -33,6 +33,27 @@ export interface Message {
   thinking: number;
   /** Tool messages: what the app shows for this result (a mail list, a file…), as JSON. */
   display: unknown | null;
+  /** Photos and files that came with the message (from the phone, or from the Mac's camera). */
+  attachments: Attachment[] | null;
+  created_at: number;
+}
+
+/** A photo or a file kept on the Mac with a conversation (uploads.ts). */
+export interface Attachment {
+  id: string;
+  kind: 'image' | 'file';
+  name: string;
+  mime: string;
+  size: number;
+  /** Where it came from: the phone, or the Mac's own camera (never sent to the cloud). */
+  source: 'phone' | 'camera';
+}
+
+export interface Upload extends Attachment {
+  device_id: string;
+  conversation_id: string | null;
+  /** Text read from a document when it arrived (null for photos, or a document without text). */
+  text: string | null;
   created_at: number;
 }
 
@@ -184,13 +205,32 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE messages ADD COLUMN display TEXT;
   `,
+  // v5 — photos and files sent from the phone (and photos from the Mac's camera): the files themselves are in
+  // ~/.brain/uploads; a row ties each one to a conversation once a message uses it.
+  `
+  ALTER TABLE messages ADD COLUMN attachments TEXT;
+  CREATE TABLE uploads (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    conversation_id TEXT,
+    kind TEXT NOT NULL CHECK (kind IN ('image', 'file')),
+    source TEXT NOT NULL DEFAULT 'phone' CHECK (source IN ('phone', 'camera')),
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    text TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX uploads_by_conversation ON uploads (conversation_id);
+  `,
 ];
 
 export type Db = ReturnType<typeof openDb>;
 
-interface MessageRow extends Omit<Message, 'tool_calls' | 'display'> {
+interface MessageRow extends Omit<Message, 'tool_calls' | 'display' | 'attachments'> {
   tool_calls: string | null;
   display: string | null;
+  attachments: string | null;
 }
 interface ActionRow extends Omit<Action, 'args'> {
   args: string;
@@ -223,6 +263,7 @@ export function openDb(path: string) {
     ...r,
     tool_calls: r.tool_calls ? JSON.parse(r.tool_calls) : null,
     display: r.display ? JSON.parse(r.display) : null,
+    attachments: r.attachments ? JSON.parse(r.attachments) : null,
   });
   const toAction = (r: ActionRow): Action => ({ ...r, args: JSON.parse(r.args) });
 
@@ -318,7 +359,10 @@ export function openDb(path: string) {
       conversationId: string,
       role: Message['role'],
       content: string,
-      extra: { model?: string | null; engine?: string | null; toolCalls?: ToolCall[]; toolName?: string; thinking?: boolean; display?: unknown } = {},
+      extra: {
+        model?: string | null; engine?: string | null; toolCalls?: ToolCall[]; toolName?: string; thinking?: boolean; display?: unknown;
+        attachments?: Attachment[];
+      } = {},
     ): Message {
       const m: Message = {
         id: randomUUID(),
@@ -331,11 +375,12 @@ export function openDb(path: string) {
         tool_name: extra.toolName ?? null,
         thinking: extra.thinking ? 1 : 0,
         display: extra.display ?? null,
+        attachments: extra.attachments?.length ? extra.attachments : null,
         created_at: now(),
       };
       db.prepare(
-        `INSERT INTO messages (id, conversation_id, role, content, model, engine, tool_calls, tool_name, thinking, display, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, conversation_id, role, content, model, engine, tool_calls, tool_name, thinking, display, attachments, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         m.id,
         m.conversation_id,
@@ -347,6 +392,7 @@ export function openDb(path: string) {
         m.tool_name,
         m.thinking,
         m.display === null ? null : JSON.stringify(m.display),
+        m.attachments === null ? null : JSON.stringify(m.attachments),
         m.created_at,
       );
       db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(m.created_at, conversationId);
@@ -476,6 +522,40 @@ export function openDb(path: string) {
     },
 
     // ---------- settings ----------
+    // ---------- uploads (uploads.ts keeps the files) ----------
+    addUpload(u: Omit<Upload, 'created_at' | 'conversation_id'> & { conversation_id?: string | null }): Upload {
+      const row: Upload = { ...u, conversation_id: u.conversation_id ?? null, created_at: now() };
+      db.prepare(
+        `INSERT INTO uploads (id, device_id, conversation_id, kind, source, name, mime, size, text, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(row.id, row.device_id, row.conversation_id, row.kind, row.source, row.name, row.mime, row.size, row.text, row.created_at);
+      return row;
+    },
+    getUpload(id: string): Upload | undefined {
+      return db.prepare('SELECT * FROM uploads WHERE id = ?').get(id) as unknown as Upload | undefined;
+    },
+    /** Ties uploads to the conversation whose message uses them. */
+    attachUploads(ids: string[], conversationId: string) {
+      const stmt = db.prepare('UPDATE uploads SET conversation_id = ? WHERE id = ? AND (conversation_id IS NULL OR conversation_id = ?)');
+      for (const id of ids) stmt.run(conversationId, id, conversationId);
+    },
+    uploadsOf(conversationId: string): Upload[] {
+      return db.prepare('SELECT * FROM uploads WHERE conversation_id = ?').all(conversationId) as unknown as Upload[];
+    },
+    /** Sent from the phone but never used in a message (the message was abandoned). */
+    unusedUploads(before: number): Upload[] {
+      return db.prepare('SELECT * FROM uploads WHERE conversation_id IS NULL AND created_at < ?').all(before) as unknown as Upload[];
+    },
+    /** Uploads whose conversation was deleted. */
+    orphanUploads(): Upload[] {
+      return db
+        .prepare('SELECT * FROM uploads WHERE conversation_id IS NOT NULL AND conversation_id NOT IN (SELECT id FROM conversations)')
+        .all() as unknown as Upload[];
+    },
+    deleteUpload(id: string) {
+      db.prepare('DELETE FROM uploads WHERE id = ?').run(id);
+    },
+
     getSetting<T>(key: string, fallback: T): T {
       const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
       return row ? (JSON.parse(row.value) as T) : fallback;

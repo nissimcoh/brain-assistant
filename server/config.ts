@@ -124,10 +124,14 @@ function personalLines(opts: { groups?: string[]; off?: string[]; accounts?: str
         'ו־agent_send כדי לשלוח להם הודעה כשהמשתמש מבקש ("תגיד לו להמשיך"), רק אחרי אישור בכרטיס. אתה לא עובד על הקוד בעצמך.',
     );
   }
+  if (on.has('camera')) {
+    lines.push('אתה יכול לצלם תמונה אחת במצלמה של המק עם mac_camera_photo, רק אחרי אישור בכרטיס. אחרי הצילום אתה רואה את התמונה ויכול לתאר אותה.');
+  }
   const off = (opts.off ?? []).filter((g) => !on.has(g));
+  if (off.includes('camera')) lines.push('המצלמה של המק לא מחוברת לבריין. אם מבקשים, הסבר שצריך להריץ במק: npm run apple:setup.');
   if (off.includes('agents')) lines.push('Claude Code ו־Codex לא מותקנים במק, אז אין לך גישה לשיחות איתם.');
   if (off.includes('mail')) lines.push('אין לך גישה למייל כי Google לא מחובר. אם מבקשים, הסבר שצריך להריץ במק: npm run google:connect.');
-  const appleOff = off.filter((g) => g !== 'mail' && g !== 'agents');
+  const appleOff = off.filter((g) => g !== 'mail' && g !== 'agents' && g !== 'camera');
   if (appleOff.length) {
     const names: Record<string, string> = { contacts: 'אנשי קשר', calendar: 'יומן', reminders: 'תזכורות', notes: 'פתקים', messages: 'הודעות' };
     lines.push(`אין לך גישה ל${appleOff.map((g) => names[g]).join(', ל')}. אם מבקשים, הסבר שצריך להריץ במק: npm run apple:setup.`);

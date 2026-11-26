@@ -80,6 +80,7 @@ if (built && !process.argv.includes('--rebuild')) {
   <key>NSRemindersUsageDescription</key><string>${usage}</string>
   <key>NSContactsUsageDescription</key><string>${usage}</string>
   <key>NSAppleEventsUsageDescription</key><string>${usage}</string>
+  <key>NSCameraUsageDescription</key><string>בריין מצלם במצלמה של המק רק כשאתה מבקש ומאשר. הנורית הירוקה דולקת בזמן הצילום.</string>
 </dict>
 </plist>
 `,
@@ -94,8 +95,9 @@ if (built && !process.argv.includes('--rebuild')) {
 }
 
 // ---- 2. permissions
-console.log('\nעכשיו macOS ישאל על כל הרשאה בחלון נפרד (עד 5 חלונות):');
-console.log('  יומן, תזכורות, אנשי קשר, ואז "Brain Helper רוצה לשלוט ב־Notes" ו"…ב־Messages".');
+console.log('\nעכשיו macOS ישאל על כל הרשאה בחלון נפרד (עד 6 חלונות):');
+console.log('  יומן, תזכורות, אנשי קשר, מצלמה, ואז "Brain Helper רוצה לשלוט ב־Notes" ו"…ב־Messages".');
+console.log('  (בלי המצלמה הכול עובד, חוץ מצילום וצפייה במצלמה של המק.)');
 console.log('  בכל חלון: "אפשר" / "Allow" / "OK".\n');
 const out = join(tmpdir(), `brain-authorize-${process.pid}.json`);
 await rm(out, { force: true });

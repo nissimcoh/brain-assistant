@@ -315,14 +315,39 @@ function clearMessages() {
   $('#empty').hidden = false;
 }
 
-function addUserMessage(content) {
+function addUserMessage(content, attachments = []) {
   $('#empty').hidden = true;
   const el = document.createElement('div');
   el.className = 'msg user';
-  el.textContent = content;
+  if (attachments.length) {
+    const box = el$('div', 'user-attachments');
+    for (const a of attachments) box.append(a.kind === 'image' ? userPhoto(a) : userFile(a));
+    el.append(box);
+  }
+  if (content) el.append(document.createTextNode(content));
   $('#messages').append(el);
   scrollToBottom();
   return el;
+}
+
+/** A photo in a message: from the phone's own copy while sending, later from the Mac (and then kept on the phone). */
+function userPhoto(a) {
+  const b = el$('button', 'user-photo');
+  b.type = 'button';
+  b.setAttribute('aria-label', `תמונה: ${a.name}`);
+  const img = el$('img');
+  img.alt = '';
+  b.append(img);
+  if (a.previewUrl) img.src = a.previewUrl;
+  else void uploadBlob(a).then((blob) => { img.src = URL.createObjectURL(blob); }).catch(() => { img.alt = 'התמונה לא נטענה'; });
+  b.addEventListener('click', () => openSentFile({ ...a, upload: true }));
+  return b;
+}
+function userFile(a) {
+  const b = el$('button', 'user-file', `${FILE_ICONS[a.name.split('.').pop().toLowerCase()] || '📄'} ${a.name}`);
+  b.type = 'button';
+  b.addEventListener('click', () => openSentFile({ ...a, upload: true }));
+  return b;
 }
 
 function addAssistantMessage({ content = '', model, engine, thinking, error } = {}) {
@@ -406,7 +431,17 @@ const shortWhen = (ms) => new Date(ms).toLocaleDateString('he-IL', { day: 'numer
 function addDisplay(el, d) {
   if (!el || !d) return;
   const box = el.querySelector('.attachments');
-  if (d.kind === 'file') {
+  if (d.kind === 'photo') {
+    const card = el$('button', 'photo-card');
+    card.type = 'button';
+    const img = el$('img');
+    img.alt = 'תמונה מהמצלמה של המק';
+    void uploadBlob(d).then((blob) => { img.src = URL.createObjectURL(blob); }).catch(() => { img.alt = 'התמונה לא נטענה (המק לא זמין?)'; });
+    card.append(img, el$('span', null, '📷 מהמצלמה של המק'));
+    card.addEventListener('click', () => openSentFile({ ...d, name: d.name || 'מצלמת המק.jpg', upload: true }));
+    box.append(card);
+    box.hidden = false;
+  } else if (d.kind === 'file') {
     box.append(fileCard(d));
   } else if (d.kind === 'mail' || d.kind === 'events' || d.kind === 'folder') {
     const card = el$('details', `data-card ${d.kind}`);
@@ -464,16 +499,21 @@ function fileCard(d) {
 
 const FILE_TYPES = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', heic: 'image/heic', txt: 'text/plain', csv: 'text/csv', mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'video/mp4', mov: 'video/quicktime' };
 
+/** A photo or file sent from the phone (or from the Mac's camera), kept on the phone once opened. */
+function uploadBlob(a) {
+  return sentFileBlob({ ...a, upload: true });
+}
+
 /** Files opened once stay on the phone (Cache Storage), so they open again even when the Mac is away. */
 async function sentFileBlob(d) {
-  const key = `/sent-copy/${d.id}`;
+  const key = d.upload ? `/upload/${d.id}` : `/sent-copy/${d.id}`;
   let cache = null;
   try {
     cache = await caches.open('brain-files');
     const hit = await cache.match(key);
     if (hit) return await hit.blob();
   } catch { /* no cache in this browser */ }
-  const res = await api(`/api/sent/${d.id}`, { signal: AbortSignal.timeout(60000) });
+  const res = await api(d.upload ? `/api/uploads/${d.id}` : `/api/sent/${d.id}`, { signal: AbortSignal.timeout(60000) });
   const blob = await res.blob();
   try {
     await cache?.put(key, new Response(blob, { headers: { 'content-type': blob.type || 'application/octet-stream' } }));
@@ -509,7 +549,11 @@ async function openSentFile(d) {
     view.src = viewerUrl;
     view.alt = d.name;
   } else if (type === 'application/pdf') {
-    view = await pdfPagesView(d);
+    if (d.upload) {
+      view = el$('iframe');
+      view.src = viewerUrl;
+      view.title = d.name;
+    } else view = await pdfPagesView(d);
   } else if (type.startsWith('text/')) {
     view = el$('pre', null, (await typed.text()).slice(0, 200000));
     view.dir = 'auto';
@@ -925,9 +969,16 @@ async function decideAction(card, action, decision) {
         if (card.isConnected) setProgress(reply || card, p.label);
       },
       action: (a) => renderActionCard(a, card),
+      // What the action brought back (a photo from the Mac's camera), above the model's words about it.
+      tool: (t) => {
+        if (!t.display || !card.isConnected || store.conversationId !== owner) return;
+        reply ??= addAssistantMessage();
+        addDisplay(reply, t.display);
+      },
       meta: (m) => {
         if (!card.isConnected || store.conversationId !== owner) return;
-        reply = addAssistantMessage({ model: m.model, engine: m.engine });
+        reply ??= addAssistantMessage();
+        setMeta(reply, { model: m.model, engine: m.engine });
         reply.querySelector('.body').classList.add('cursor');
       },
       delta: (d) => appendDelta(reply, d.text),
@@ -1241,6 +1292,211 @@ function conversationFromUrl(url) {
   return c && /^[0-9a-f-]{36}$/.test(c) ? c : null;
 }
 
+// ---------------- photos and files from the phone ----------------
+// On the iPhone, the + button offers: photo library, take a photo, or choose a file. Photos are made
+// smaller here (up to 1600 px, JPEG): quicker to send, and a model doesn't need more. Each one is sent
+// to the Mac right away, and the message then names them by id.
+const MAX_ATTACH = 6;
+let pendingAttachments = [];
+const attachReady = () => pendingAttachments.some((a) => a.status === 'ready');
+const attachBusy = () => pendingAttachments.some((a) => a.status === 'uploading');
+
+async function shrinkImage(file) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+  } catch {
+    return null;
+  }
+}
+
+function addAttachments(files) {
+  for (const file of files) {
+    if (pendingAttachments.length >= MAX_ATTACH) {
+      notify(`אפשר לצרף עד ${MAX_ATTACH} קבצים להודעה.`);
+      break;
+    }
+    const item = { key: crypto.randomUUID(), status: 'uploading', kind: file.type.startsWith('image/') ? 'image' : 'file', name: file.name || 'קובץ' };
+    pendingAttachments.push(item);
+    void uploadAttachment(item, file);
+  }
+  renderTray();
+}
+
+async function uploadAttachment(item, file) {
+  let body = file;
+  if (item.kind === 'image') {
+    const small = await shrinkImage(file);
+    if (small) {
+      body = small;
+      item.name = (item.name.replace(/\.[^.]*$/, '') || 'תמונה') + '.jpg';
+    }
+    item.previewUrl = URL.createObjectURL(body);
+    renderTray();
+  }
+  try {
+    const res = await api(`/api/uploads?name=${encodeURIComponent(item.name)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body,
+      signal: AbortSignal.timeout(120000),
+    });
+    Object.assign(item, await res.json(), { status: 'ready' });
+    if (item.kind === 'file' && item.hasText === false) notify(`לא מצאתי טקסט ב־${item.name}. בריין יידע רק את השם שלו.`);
+  } catch (err) {
+    if (handleUnauthorized(err)) return;
+    item.status = 'failed';
+    item.error = err.message || 'השליחה למק נכשלה.';
+    notify(`${item.name}: ${item.error}`);
+  }
+  if (pendingAttachments.includes(item)) renderTray();
+}
+
+function renderTray() {
+  const tray = $('#attach-tray');
+  tray.replaceChildren(
+    ...pendingAttachments.map((a) => {
+      const el = el$('div', `attach-item ${a.status}`);
+      if (a.kind === 'image' && a.previewUrl) {
+        const img = el$('img');
+        img.src = a.previewUrl;
+        img.alt = a.name;
+        el.append(img);
+      } else {
+        el.append(el$('span', 'file-name', `${FILE_ICONS[a.name.split('.').pop().toLowerCase()] || '📄'} ${a.name}`));
+      }
+      if (a.status !== 'ready') el.append(el$('span', 'state', a.status === 'failed' ? '!' : '…'));
+      const remove = el$('button', 'remove', '×');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', `להסיר את ${a.name}`);
+      remove.addEventListener('click', () => {
+        pendingAttachments = pendingAttachments.filter((x) => x !== a);
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+        renderTray();
+      });
+      el.append(remove);
+      return el;
+    }),
+  );
+  tray.hidden = !pendingAttachments.length;
+  updateComposer();
+}
+
+/** The attachments that made it to the Mac go with the message; the tray empties. */
+function takeAttachments() {
+  const ready = pendingAttachments
+    .filter((a) => a.status === 'ready')
+    .map(({ id, kind, name, mime, size, previewUrl }) => ({ id, kind, name, mime, size, previewUrl }));
+  for (const a of pendingAttachments) if (a.status !== 'ready' && a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+  pendingAttachments = [];
+  renderTray();
+  return ready;
+}
+
+// ---------------- the Mac's camera, live ----------------
+// Frames arrive as [4-byte length][JPEG] for as long as this screen is open (up to the Mac's limit).
+const cameraSheet = $('#camera-sheet');
+let cameraController = null;
+let cameraFrameUrl = null;
+const setCameraState = (text) => { $('#camera-state').textContent = text; };
+
+async function openCamera() {
+  closeDrawer();
+  cameraSheet.hidden = false;
+  $('#camera-frame').hidden = true;
+  $('#camera-live').hidden = true;
+  $('#camera-start').hidden = $('#camera-stop').hidden = true;
+  setCameraState('בודק את המצלמה של המק…');
+  try {
+    const info = await (await api('/api/camera')).json();
+    if (cameraSheet.hidden) return;
+    if (!info.available) {
+      setCameraState('המצלמה של המק לא מחוברת לבריין. במק: npm run apple:setup, ולאשר את המצלמה.');
+      return;
+    }
+    void startLive();
+  } catch (err) {
+    if (!handleUnauthorized(err)) setCameraState(err.message || 'המק לא זמין.');
+  }
+}
+
+async function startLive() {
+  stopLive();
+  const controller = new AbortController();
+  cameraController = controller;
+  $('#camera-start').hidden = true;
+  $('#camera-stop').hidden = false;
+  setCameraState('מתחבר למצלמה… (במק נדלקת הנורית הירוקה)');
+  let frames = 0;
+  let seconds = 300;
+  const started = Date.now();
+  try {
+    const res = await api('/api/camera/live', { signal: controller.signal });
+    seconds = Number(res.headers.get('x-live-seconds')) || seconds;
+    const reader = res.body.getReader();
+    let buf = new Uint8Array(0);
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const joined = new Uint8Array(buf.length + value.length);
+      joined.set(buf);
+      joined.set(value, buf.length);
+      buf = joined;
+      while (buf.length >= 4) {
+        const len = ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0;
+        if (buf.length < 4 + len) break;
+        showCameraFrame(buf.slice(4, 4 + len));
+        buf = buf.slice(4 + len);
+        frames++;
+        const left = Math.max(0, seconds - Math.round((Date.now() - started) / 1000));
+        setCameraState(`צפייה חיה · נשארו ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`);
+      }
+    }
+    if (cameraController === controller) setCameraState(`הצפייה נעצרה. כל צפייה נמשכת עד ${Math.round(seconds / 60)} דקות.`);
+  } catch (err) {
+    if (controller.signal.aborted || handleUnauthorized(err)) return;
+    setCameraState(err.status ? err.message : frames ? 'החיבור למק נקטע.' : 'המק לא ענה.');
+  } finally {
+    if (cameraController === controller) {
+      cameraController = null;
+      $('#camera-live').hidden = true;
+      $('#camera-stop').hidden = true;
+      $('#camera-start').hidden = false;
+      $('#camera-start').textContent = frames ? 'להמשיך לצפות' : 'לנסות שוב';
+    }
+  }
+}
+
+function showCameraFrame(bytes) {
+  const img = $('#camera-frame');
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+  const previous = cameraFrameUrl;
+  cameraFrameUrl = url;
+  img.onload = () => { if (previous) URL.revokeObjectURL(previous); };
+  img.src = url;
+  img.hidden = false;
+  $('#camera-live').hidden = false;
+}
+
+function stopLive(note) {
+  const controller = cameraController;
+  cameraController = null;
+  controller?.abort();
+  if (controller) {
+    $('#camera-live').hidden = true;
+    $('#camera-stop').hidden = true;
+    $('#camera-start').hidden = false;
+    $('#camera-start').textContent = 'להמשיך לצפות';
+    if (note) setCameraState(note);
+  }
+}
+
 // ---------------- conversations ----------------
 let viewSequence = 0;
 async function openConversation(id) {
@@ -1265,7 +1521,7 @@ async function openConversation(id) {
     let pendingDisplays = [];
     for (const m of conv.messages) {
       if (m.role === 'user') {
-        addUserMessage(m.content);
+        addUserMessage(m.content, m.attachments || []);
       } else if (m.role === 'tool') {
         if (m.display?.kind === 'cloud-choice') addChoiceCard(m.display);
         else if (m.display) pendingDisplays.push(m.display);
@@ -1419,7 +1675,8 @@ function updateComposer() {
   const busy = !!state.streaming;
   $('#send-btn').hidden = busy;
   $('#stop-btn').hidden = !busy;
-  $('#send-btn').disabled = !$('#input').value.trim() || state.online === false;
+  $('#send-btn').disabled = (!$('#input').value.trim() && !attachReady()) || attachBusy() || state.online === false;
+  $('#attach-btn').disabled = state.online === false || pendingAttachments.length >= MAX_ATTACH;
 }
 
 function detachStream() {
@@ -1431,7 +1688,7 @@ function detachStream() {
   updateComposer();
 }
 
-async function send(text, submitted) {
+async function send(text, submitted, attachments = []) {
   const origin = store.conversationId;
   const session = store.token;
   cancelFollow();
@@ -1441,7 +1698,7 @@ async function send(text, submitted) {
     if (card.classList.contains('choice-card')) renderChoiceCard({ ...card.choice, status: 'expired' }, card);
     else renderActionCard({ ...cardAction(card), status: 'expired' }, card);
   }
-  addUserMessage(text);
+  addUserMessage(text, attachments);
   let el = addAssistantMessage();
   el.querySelector('.body').classList.add('cursor');
 
@@ -1456,7 +1713,12 @@ async function send(text, submitted) {
       method: 'POST',
       // The switch next to the box: a new conversation starts in the cloud if it's on (an existing
       // conversation already knows; the switch told the Mac).
-      body: JSON.stringify({ conversationId: store.conversationId, text, engine: !store.conversationId && state.engine !== defaultEngine() ? state.engine : undefined }),
+      body: JSON.stringify({
+        conversationId: store.conversationId,
+        text,
+        attachments: attachments.length ? attachments.map((a) => a.id) : undefined,
+        engine: !store.conversationId && state.engine !== defaultEngine() ? state.engine : undefined,
+      }),
       signal: controller.signal,
     });
     await consumeStream(res, {
@@ -1916,6 +2178,21 @@ function openMachine() {
   void refreshMachine();
 }
 for (const id of ['#mac-status','#home-mac','#machine-btn']) $(id).addEventListener('click', openMachine);
+$('#camera-btn').addEventListener('click', openCamera);
+$('#camera-start').addEventListener('click', () => void startLive());
+$('#camera-stop').addEventListener('click', () => stopLive('הצפייה נעצרה.'));
+// Closing the screen (any way) or leaving the app stops the camera on the Mac.
+new MutationObserver(() => {
+  if (cameraSheet.hidden) {
+    stopLive();
+    $('#camera-frame').removeAttribute('src');
+    if (cameraFrameUrl) URL.revokeObjectURL(cameraFrameUrl);
+    cameraFrameUrl = null;
+  }
+}).observe(cameraSheet, { attributes: true, attributeFilter: ['hidden'] });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && cameraController) stopLive('הצפייה נעצרה כשיצאת מהאפליקציה.');
+});
 $('#machine-refresh').addEventListener('click', refreshMachine);
 
 // Temporary, opt-in iPhone measurements. Only geometry leaves the render loop;
@@ -2399,8 +2676,14 @@ input.addEventListener('keydown', (e) => {
 $('#composer').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text || state.streaming || state.online === false) return;
-  send(text, input.value);
+  if ((!text && !attachReady()) || attachBusy() || state.streaming || state.online === false) return;
+  send(text, input.value, takeAttachments());
+});
+$('#attach-btn').addEventListener('click', () => $('#attach-input').click());
+$('#attach-input').addEventListener('change', (e) => {
+  const chosen = [...e.target.files];
+  e.target.value = '';
+  addAttachments(chosen);
 });
 $('#stop-btn').addEventListener('click', stopAnswer);
 for (const b of document.querySelectorAll('.suggestion[data-text]')) {

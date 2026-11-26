@@ -12,7 +12,7 @@ Every step says what you should see. Brain's screens are in Hebrew; the screensh
 3. [Connect your iPhone](#3-connect-your-iphone)
 4. [Turn on notifications](#4-turn-on-notifications)
 5. [Connect Gmail and Google Calendar](#5-connect-gmail-and-google-calendar)
-6. [Connect Apple Calendar, Reminders, Contacts, Notes and Messages](#6-connect-apple-calendar-reminders-contacts-notes-and-messages)
+6. [Connect Apple Calendar, Reminders, Contacts, Notes, Messages and the camera](#6-connect-apple-calendar-reminders-contacts-notes-messages-and-the-camera)
 7. [The cloud and your privacy settings](#7-the-cloud-and-your-privacy-settings)
 8. [Using Brain](#8-using-brain)
 9. [When something doesn't work](#9-when-something-doesnt-work)
@@ -151,7 +151,7 @@ Google requires your own app in Google Cloud. It's free, it belongs to you only,
 **Every 7 days:** while your Google app is in *Testing*, Google cancels the permission after a week. Brain reminds you a day before,
 on the Mac and the phone. Renew with `npm run google:connect`; you don't need to restart anything.
 
-## 6. Connect Apple Calendar, Reminders, Contacts, Notes and Messages
+## 6. Connect Apple Calendar, Reminders, Contacts, Notes, Messages and the camera
 
 ```bash
 npm run apple:setup
@@ -160,15 +160,18 @@ npm run apple:setup
 It builds a small app called **Brain Helper** (under a minute), because macOS gives these permissions to apps, not to Node.
 If it says the Command Line Tools are missing, run `xcode-select --install`, then run `npm run apple:setup` again.
 
-macOS shows up to five windows, one after another. Approve each one:
+macOS shows up to six windows, one after another. Approve each one:
 
 - Calendar: **Allow Full Access**
 - Reminders: **Allow Full Access**
 - Contacts: **Allow**
+- Camera: **Allow** (only needed for photos and live view from the Mac)
 - "Brain Helper wants to control Notes": **OK**
 - "Brain Helper wants to control Messages": **OK**
 
-You should see five ✔ lines. Whatever is on the Mac syncs with the iPhone through iCloud, so there's nothing to do on the phone.
+You should see six ✔ lines. Whatever is on the Mac syncs with the iPhone through iCloud, so there's nothing to do on the phone.
+
+**After updating Brain**, run `npm run apple:setup` again: when Brain Helper changes, macOS asks for its permissions again.
 
 ## 7. The cloud and your privacy settings
 
@@ -226,6 +229,26 @@ Talk to Brain the way you'd talk to an assistant, in Hebrew. A few things to try
 - "תשלח לי את קורות החיים" (send me my CV) finds the file and sends it to the phone. It stays in the conversation, even offline.
 - "תעביר לסל את…" (move … to the Trash) moves a file to the Mac's Trash after you approve. Brain never deletes files.
 
+### Photos and files
+
+<p align="center"><img src="screenshots/upload.jpg" width="260" alt="A photo waiting to be sent"></p>
+
+- Tap **+** next to the message box: **Photo Library**, **Take Photo** or **Choose Files**. You can add up to 6.
+- Each one goes to the Mac right away (a small "…" while it does). Then write a question, or just send.
+- "מה הצמח הזה?" (what plant is this?) with a photo: the model on the Mac looks at the photo itself.
+- A PDF or Word file: Brain reads its text on the Mac and can summarize it or answer questions about it.
+- Tap a photo or file in the conversation to open it again, even offline once you've opened it.
+
+### The Mac's camera
+
+<p align="center"><img src="screenshots/photo.jpg" width="260" alt="A photo from the Mac's camera"> <img src="screenshots/live.jpg" width="260" alt="Live view"></p>
+
+- "תצלם לי מה קורה בבית" (take a photo of what's going on at home) shows an approval card. **Approve**, and one photo arrives,
+  with a description. It stays on the Mac and never goes to the cloud.
+- Menu → **Mac camera** shows a live view for as long as that screen is open, up to 5 minutes at a time. **Stop** ends it.
+- The green light next to the Mac's camera is on whenever it's used, and the Mac shows a notification when a live view starts.
+  The camera works only while the Mac is awake with its lid open.
+
 ### Claude Code and Codex
 
 <p align="center"><img src="screenshots/agents.jpg" width="260" alt="A coding agent's summary and a message waiting for approval"></p>
@@ -261,6 +284,9 @@ Talk to Brain the way you'd talk to an assistant, in Hebrew. A few things to try
 | Notifications don't arrive | Settings → Notifications → **Test notification**. Check iPhone Settings → Notifications → Brain. The activity log shows what the push service answered. |
 | A folder marked ✗ in Settings → File access | macOS asks once on the Mac ("node wants access"): approve it. If no window appears, add Node under System Settings → Privacy & Security → Full Disk Access (the exact path is shown in Settings), then `npm run service:install`. |
 | "Google isn't connected" or mail stopped working | The weekly permission ended: `npm run google:connect`. |
+| "The Mac's camera isn't connected" | `npm run apple:setup` on the Mac, and allow the camera. Or System Settings → Privacy & Security → Camera → Brain Helper. |
+| "The camera isn't available" | The Mac is asleep or its lid is closed. A video call on the Mac may also be using it. |
+| "HEIC photos aren't supported" | Rare (the app converts photos). On the iPhone: Settings → Camera → Formats → **Most Compatible**, or send a screenshot. |
 | An Apple line with ✘ | It says where to fix it in System Settings. Then run `npm run apple:setup` again. |
 | Anything else | `npm run doctor`, and `npm run service:logs` for the service log. |
 

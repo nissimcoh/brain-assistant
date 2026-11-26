@@ -100,6 +100,7 @@ test('a subscription can only point at a real push service', () => {
   }
   assert.equal(validSubscription({ ...sub, keys: { ...sub.keys, auth: b64(randomBytes(8)) } }), null);
   assert.equal(validSubscription({ ...sub, keys: { ...sub.keys, p256dh: b64(randomBytes(65)) } }), null);
+  assert.equal(validSubscription({ ...sub, keys: { ...sub.keys, p256dh: b64(Buffer.concat([Buffer.from([4]), randomBytes(64)])) } }), null, 'not a point on the curve');
   assert.equal(validSubscription(null), null);
 });
 

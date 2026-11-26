@@ -353,27 +353,7 @@ export function createFiles(policy: FilePolicy, exec: Exec, platform: string, ho
     if (!file) throw new FileAccessError(`זו לא תיקייה שאפשר לקרוא כקובץ: ${display(path)}`);
     if (file.size > MAX_READ_BYTES) throw new FileAccessError(`הקובץ גדול מדי לקריאה (${formatSize(file.size)})`);
     const { downloaded } = await ensureLocal(path);
-    const ext = extname(path).toLowerCase();
-    let text: string;
-    if (TEXT_EXT.has(ext) || ext === '') {
-      const buf = await readFile(path);
-      if (buf.subarray(0, 8000).includes(0)) throw new FileAccessError('זה קובץ בינארי, אין בו טקסט לקריאה');
-      text = buf.toString('utf8');
-    } else if (TEXTUTIL_EXT.has(ext)) {
-      if (platform !== 'darwin') throw new FileAccessError('קריאת קבצי Word זמינה רק במק');
-      text = (await exec('textutil', ['-convert', 'txt', '-stdout', path])).stdout;
-    } else if (ext === '.pdf') {
-      if (platform !== 'darwin') throw new FileAccessError('קריאת PDF זמינה רק במק');
-      // PDFKit through JavaScript for Automation: built into every Mac, no installs.
-      const script =
-        "ObjC.import('PDFKit'); function run(argv) { const d = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(argv[0])); " +
-        "if (!d || d.isNil()) return ''; const s = d.string; return (s && !s.isNil()) ? s.js : ''; }";
-      text = (await exec('osascript', ['-l', 'JavaScript', '-e', script, path])).stdout;
-      if (!text.trim()) throw new FileAccessError('ב־PDF הזה אין טקסט לקריאה (כנראה סריקה)');
-    } else {
-      throw new FileAccessError(`עדיין אין תמיכה בקריאת קבצי ${ext || 'ללא סיומת'}. אפשר לשלוח אותו לטלפון.`);
-    }
-    return { file, downloaded, text: text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() };
+    return { file, downloaded, text: await extractText(path, exec, platform) };
   }
 
   /** Creates a short-lived link for downloading the file on the phone. */
@@ -526,6 +506,33 @@ export function createFiles(policy: FilePolicy, exec: Exec, platform: string, ho
 }
 
 export type Files = ReturnType<typeof createFiles>;
+
+/**
+ * Readable text from a file on this Mac: plain text, Word/Pages/RTF (textutil) and PDF (PDFKit), with
+ * the Mac's own tools. Also reads documents sent from the phone (uploads.ts). Throws FileAccessError.
+ */
+export async function extractText(path: string, exec: Exec, platform: string, ext = extname(path).toLowerCase()): Promise<string> {
+  let text: string;
+  if (TEXT_EXT.has(ext) || ext === '') {
+    const buf = await readFile(path);
+    if (buf.subarray(0, 8000).includes(0)) throw new FileAccessError('זה קובץ בינארי, אין בו טקסט לקריאה');
+    text = buf.toString('utf8');
+  } else if (TEXTUTIL_EXT.has(ext)) {
+    if (platform !== 'darwin') throw new FileAccessError('קריאת קבצי Word זמינה רק במק');
+    text = (await exec('textutil', ['-convert', 'txt', '-stdout', path])).stdout;
+  } else if (ext === '.pdf') {
+    if (platform !== 'darwin') throw new FileAccessError('קריאת PDF זמינה רק במק');
+    // PDFKit through JavaScript for Automation: built into every Mac, no installs.
+    const script =
+      "ObjC.import('PDFKit'); function run(argv) { const d = $.PDFDocument.alloc.initWithURL($.NSURL.fileURLWithPath(argv[0])); " +
+      "if (!d || d.isNil()) return ''; const s = d.string; return (s && !s.isNil()) ? s.js : ''; }";
+    text = (await exec('osascript', ['-l', 'JavaScript', '-e', script, path])).stdout;
+    if (!text.trim()) throw new FileAccessError('ב־PDF הזה אין טקסט לקריאה (כנראה סריקה)');
+  } else {
+    throw new FileAccessError(`עדיין אין תמיכה בקריאת קבצי ${ext || 'ללא סיומת'}. אפשר לשלוח אותו לטלפון.`);
+  }
+  return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;

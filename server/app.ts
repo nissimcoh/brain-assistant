@@ -1,8 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { extname, join, normalize, sep } from 'node:path';
 import type { Config } from './config.ts';
-import type { Db, Device } from './db.ts';
+import type { Attachment, Db, Device } from './db.ts';
+import { createUploads, MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, UploadError, type Uploads } from './uploads.ts';
 import { createAuth } from './auth.ts';
 import { listModels, loadedModels, OllamaError, warmUp } from './ollama.ts';
 import { type CloudDeps, createAgent, type Emit, type Engine, type Settings, shouldThink, type ThinkingMode } from './agent.ts';
@@ -17,7 +19,7 @@ import { createWeb, type Web } from './web.ts';
 import { randomUUID } from 'node:crypto';
 import { createToolRegistry, defaultExec, type Exec, snippet, sensitiveReason, MAX_MEMORIES, type ToolContext, ToolInputError, type ToolRegistry } from './tools.ts';
 
-export const VERSION = '0.16.1';
+export const VERSION = '0.17.0';
 
 const MAX_MEMORY_CHARS = 500;
 
@@ -41,7 +43,8 @@ const SECURITY_HEADERS: Record<string, string> = {
   'referrer-policy': 'no-referrer',
   'x-frame-options': 'DENY',
   'content-security-policy':
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-src 'self' blob:; " +
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
 };
 
 class HttpError extends Error {
@@ -77,6 +80,26 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   } catch {
     throw new HttpError(400, 'גוף הבקשה אינו JSON תקין');
   }
+}
+
+/** A raw request body, up to `max` bytes. */
+async function readBody(req: IncomingMessage, max: number, tooBig: string): Promise<Buffer> {
+  // Too big: answer at once, and let the rest of the upload drain so the phone gets the answer
+  // instead of a broken connection.
+  if (Number(req.headers['content-length'] ?? 0) > max) {
+    req.resume();
+    throw new HttpError(413, tooBig);
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let over = false;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > max) over = true;
+    if (!over) chunks.push(chunk as Buffer);
+  }
+  if (over) throw new HttpError(413, tooBig);
+  return Buffer.concat(chunks);
 }
 
 /**
@@ -146,6 +169,10 @@ export function createApp(
     agents?: Agents | null;
     /** Replaces the network for the push services (tests). */
     pushFetch?: typeof fetch;
+    /** The Mac's camera (null: none; tests pass their own). */
+    camera?: ToolContext['camera'] | null;
+    /** How long a live view lasts before it asks again (seconds). */
+    liveSeconds?: number;
   } = {},
 ) {
   const auth = createAuth(db);
@@ -179,6 +206,8 @@ export function createApp(
       policy.blocked.push(...config.extraBlockedPaths);
       return createFiles(policy, exec, platform);
     })();
+  // Photos and files from the phone, and photos from the Mac's camera (uploads.ts): ~/.brain/uploads.
+  const uploads: Uploads = createUploads({ dir: join(config.dataDir, 'uploads'), db, exec, platform });
   const toolContext: ToolContext = {
     exec,
     platform,
@@ -216,6 +245,8 @@ export function createApp(
                 log: (event, details) => db.audit(event, details),
                 onFinish: (job, next) => void notifyAgent(job, next),
               }))),
+    // The Mac's camera, through Brain Helper (it holds the camera permission). Never the real one inside tests.
+    camera: options.camera === null ? undefined : (options.camera ?? undefined),
     // A file sent to the phone stays with the conversation: the app asks for it again by this id.
     keepSent: (file) => {
       const id = randomUUID();
@@ -253,7 +284,34 @@ export function createApp(
   };
 
   let loadingModel: string | null = null;
-  const agent = createAgent({ config, db, tools, toolContext, settings, cloud, loadingModel: () => loadingModel });
+  if (options.camera === undefined && toolContext.apple) {
+    const apple = toolContext.apple;
+    toolContext.camera = {
+      available: () => apple.has('camera').catch(() => false),
+      async photo(conversationId) {
+        const tmp = join(config.dataDir, 'uploads', `camera-${randomUUID()}.jpg`);
+        try {
+          await apple.cameraPhoto(tmp);
+          const saved = await uploads.save('mac', 'מצלמת המק.jpg', await readFile(tmp), 'camera', conversationId);
+          db.audit('camera.photo', { conversationId, uploadId: saved.id });
+          return uploads.attachment(saved);
+        } finally {
+          await rm(tmp, { force: true });
+        }
+      },
+    };
+  }
+  /** A photo kept on the Mac, for a model that can see it. */
+  const imageData = (a: Attachment): string | null => {
+    const u = db.getUpload(a.id);
+    if (!u) return null;
+    try {
+      return readFileSync(uploads.pathOf(u)).toString('base64');
+    } catch {
+      return null;
+    }
+  };
+  const agent = createAgent({ config, db, tools, toolContext, settings, cloud, imageData, loadingModel: () => loadingModel });
 
   // Ollama status is refreshed in the background so /api/health always answers instantly,
   // even while Ollama is busy loading a model.
@@ -329,6 +387,11 @@ export function createApp(
   if (toolContext.agents && !process.env.NODE_TEST_CONTEXT) {
     toolContext.agents.recover();
     setInterval(() => toolContext.agents?.tick(), 60_000).unref();
+  }
+  // Uploads never used in a message, and those of deleted conversations.
+  if (!process.env.NODE_TEST_CONTEXT) {
+    void uploads.cleanup().catch(() => {});
+    setInterval(() => void uploads.cleanup().catch(() => {}), 3600_000).unref();
   }
   if (autoWarm) {
     void refreshOllama();
@@ -472,22 +535,106 @@ export function createApp(
     if (!res.destroyed) res.end();
   }
 
+  // ---- live view from the Mac's camera ----
+  // Only one at a time; the newest viewer takes over. The helper writes the newest frame to a folder in
+  // ~/.brain and stops on its own if Brain stops touching it. Frames go to the phone as [4-byte length][JPEG].
+  const liveSeconds = options.liveSeconds ?? 300;
+  let live: { stop: () => void } | null = null;
+  async function cameraLive(res: ServerResponse, device: Device) {
+    const apple = toolContext.apple;
+    if (!toolContext.camera || !apple || !(await toolContext.camera.available().catch(() => false))) {
+      throw new HttpError(409, 'המצלמה של המק לא מחוברת לבריין. במק: npm run apple:setup');
+    }
+    live?.stop();
+    const dir = join(config.dataDir, 'camera-live', randomUUID());
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const alive = join(dir, 'alive');
+    const frame = join(dir, 'frame.jpg');
+    await writeFile(alive, '', { mode: 0o600 });
+    let stopped = false;
+    const session = {
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        void writeFile(join(dir, 'stop'), '').catch(() => {});
+      },
+    };
+    live = session;
+    res.on('close', session.stop);
+    const started = Date.now();
+    let helperError: Error | null = null;
+    let helperDone = false;
+    const helper = apple
+      .cameraLive(dir, liveSeconds)
+      .catch((err: Error) => { helperError = err; })
+      .finally(() => { helperDone = true; });
+    const touch = setInterval(() => void utimes(alive, new Date(), new Date()).catch(() => {}), 2000);
+    const name = device.name || 'מכשיר מצומד';
+    db.audit('camera.live.started', { deviceId: device.id });
+    // Whoever is at the Mac sees that someone is watching (as well as the camera's green light).
+    if (platform === 'darwin') {
+      void exec('osascript', ['-e', 'on run argv', '-e', 'display notification (item 1 of argv) with title "Brain"', '-e', 'end run',
+        `צפייה חיה במצלמה של המק מ־${name}`]).catch(() => {});
+    }
+    let frames = 0;
+    let last = 0;
+    try {
+      while (!stopped && !res.destroyed) {
+        const st = await stat(frame).catch(() => null);
+        if (st && st.mtimeMs !== last) {
+          last = st.mtimeMs;
+          const jpeg = await readFile(frame).catch(() => null);
+          // A slow connection skips frames instead of piling them up.
+          if (jpeg?.length && res.writableLength < 512 * 1024) {
+            if (!frames) {
+              res.writeHead(200, { ...SECURITY_HEADERS, 'content-type': 'application/octet-stream', 'cache-control': 'no-store', 'x-live-seconds': String(liveSeconds) });
+            }
+            const len = Buffer.alloc(4);
+            len.writeUInt32BE(jpeg.length);
+            res.write(len);
+            res.write(jpeg);
+            frames++;
+          }
+        }
+        if (helperDone) break;
+        if (!frames && Date.now() - started > 15_000) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    } finally {
+      clearInterval(touch);
+      session.stop();
+      if (live === session) live = null;
+      await helper;
+      await rm(dir, { recursive: true, force: true });
+      db.audit('camera.live.stopped', { deviceId: device.id, seconds: Math.round((Date.now() - started) / 1000), frames });
+    }
+    if (!frames) throw new HttpError(503, (helperError as Error | null)?.message ?? 'המצלמה של המק לא שלחה תמונה.');
+    if (!res.destroyed) res.end();
+  }
+
   async function chat(req: IncomingMessage, res: ServerResponse, device: Device) {
     const body = await readJson(req);
     const text = typeof body.text === 'string' ? body.text.trim() : '';
-    if (!text) throw new HttpError(400, 'ההודעה ריקה');
+    // Photos and files sent from the phone just before (POST /api/uploads), by id.
+    const ids = Array.isArray(body.attachments) ? body.attachments.filter((x): x is string => typeof x === 'string') : [];
+    if (ids.length > MAX_ATTACHMENTS) throw new HttpError(400, `אפשר לצרף עד ${MAX_ATTACHMENTS} קבצים להודעה`);
+    const ups = ids.map((id) => db.getUpload(id));
+    if (ups.some((u) => !u)) throw new HttpError(404, 'קובץ מצורף לא נמצא במק. נסה לצרף אותו שוב.');
+    if (!text && !ups.length) throw new HttpError(400, 'ההודעה ריקה');
     if (text.length > MAX_MESSAGE_CHARS) throw new HttpError(413, 'ההודעה ארוכה מדי');
     // The switch in the app: answer this conversation in the cloud, or on the Mac (from now on).
     const engine = body.engine === 'cloud' || body.engine === 'local' ? (body.engine as Engine) : undefined;
 
     let conversation = typeof body.conversationId === 'string' ? db.getConversation(body.conversationId) : undefined;
     if (body.conversationId && !conversation) throw new HttpError(404, 'השיחה לא נמצאה');
-    conversation ??= db.createConversation(titleFrom(text));
+    if (ups.some((u) => u!.conversation_id && u!.conversation_id !== conversation?.id)) throw new HttpError(409, 'הקובץ הזה כבר שייך לשיחה אחרת');
+    conversation ??= db.createConversation(titleFrom(text || (ups[0]!.kind === 'image' ? 'תמונה' : ups[0]!.name)));
 
     // A new message replaces an answer still being worked on in this conversation.
     await stopRun(conversation.id);
     agent.expirePending(conversation.id);
-    const userMessage = db.addMessage(conversation.id, 'user', text);
+    db.attachUploads(ids, conversation.id);
+    const userMessage = db.addMessage(conversation.id, 'user', text, { attachments: ups.map((u) => uploads.attachment(u!)) });
     const s = settings();
     const think = shouldThink(s.thinking, text);
 
@@ -538,6 +685,8 @@ export function createApp(
 
     const { emit } = stream ?? openStream(res);
     emit('action', agent.present(outcome.action));
+    // What the action brought back for the app to show (a photo from the Mac's camera).
+    if (outcome.ran?.display) emit('tool', { tool: outcome.action.tool, ok: true, display: outcome.ran.display });
     if (decision === 'reject') {
       res.end();
       return;
@@ -705,6 +854,48 @@ export function createApp(
 
     if (path === '/api/chat' && method === 'POST') return chat(req, res, device);
 
+    // ----- photos and files from the phone (uploads.ts) -----
+    if (path === '/api/uploads' && method === 'POST') {
+      const bytes = await readBody(req, MAX_UPLOAD_BYTES, 'הקובץ גדול מדי (עד 15MB).');
+      let saved;
+      try {
+        saved = await uploads.save(device.id, url.searchParams.get('name') ?? '', bytes);
+      } catch (err) {
+        if (err instanceof UploadError) throw new HttpError(415, err.message);
+        throw err;
+      }
+      db.audit('upload.saved', { deviceId: device.id, uploadId: saved.id, kind: saved.kind, name: saved.name, size: saved.size });
+      return send(res, 200, { ...uploads.attachment(saved), hasText: saved.kind === 'file' ? !!saved.text : undefined });
+    }
+    const up = path.match(new RegExp(`^/api/uploads/(${UUID})$`));
+    if (up && method === 'GET') {
+      const u = db.getUpload(up[1]);
+      if (!u) throw new HttpError(404, 'הקובץ לא נמצא.');
+      let bytes: Buffer;
+      try {
+        bytes = await uploads.read(u);
+      } catch {
+        throw new HttpError(404, 'הקובץ כבר לא נמצא במק.');
+      }
+      res.writeHead(200, {
+        ...SECURITY_HEADERS,
+        'content-type': u.mime,
+        'content-length': String(bytes.length),
+        'content-disposition': `${u.kind === 'image' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(u.name)}`,
+        'cache-control': 'private, no-store',
+        'content-security-policy': "default-src 'none'; sandbox",
+      });
+      res.end(bytes);
+      return;
+    }
+
+    // ----- the Mac's camera: live view, only while the phone watches, never longer than liveSeconds -----
+    if (path === '/api/camera' && method === 'GET') {
+      const ok = !!toolContext.camera && (await toolContext.camera.available().catch(() => false));
+      return send(res, 200, { available: ok, seconds: liveSeconds });
+    }
+    if (path === '/api/camera/live' && method === 'GET') return cameraLive(res, device);
+
     // ----- memory -----
     if (path === '/api/memories') {
       if (method === 'GET') return send(res, 200, db.listMemories());
@@ -774,7 +965,7 @@ export function createApp(
       const a = toolContext.apple;
       if (!a) return send(res, 200, { installed: false });
       const st = await a.status(true);
-      return send(res, 200, { installed: st.installed, calendar: st.calendar, reminders: st.reminders, contacts: st.contacts });
+      return send(res, 200, { installed: st.installed, calendar: st.calendar, reminders: st.reminders, contacts: st.contacts, camera: st.camera ?? 'none' });
     }
 
     if (path === '/api/files/access' && method === 'GET') {
@@ -858,7 +1049,9 @@ export function createApp(
         return send(res, 200, { ok: true, title });
       }
       if (method === 'DELETE') {
+        const attached = db.uploadsOf(id);
         if (!db.deleteConversation(id)) throw new HttpError(404, 'השיחה לא נמצאה');
+        for (const u of attached) await uploads.remove(u);
         db.audit('conversation.deleted', { deviceId: device.id, conversationId: id });
         return send(res, 200, { ok: true });
       }

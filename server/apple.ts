@@ -24,6 +24,7 @@ export const PERMISSION_NAMES: Record<string, string> = {
   contacts: 'אנשי קשר',
   notes: 'פתקים',
   messages: 'הודעות (iMessage / SMS)',
+  camera: 'מצלמה',
 };
 
 const PRIVACY = 'הגדרות מערכת ← פרטיות ואבטחה';
@@ -36,6 +37,7 @@ export function permissionHelp(key: string, state: string): string {
     contacts: `${PRIVACY} ← אנשי קשר ← להדליק את Brain Helper`,
     notes: `${PRIVACY} ← אוטומציה ← Brain Helper ← להדליק את Notes`,
     messages: `${PRIVACY} ← אוטומציה ← Brain Helper ← להדליק את Messages`,
+    camera: `${PRIVACY} ← מצלמה ← להדליק את Brain Helper`,
   };
   if (state.startsWith('error') && key === 'messages') return `אפליקציית Messages במק לא מוכנה (מחוברת ל־Apple ID?): ${state}`;
   if (state.startsWith('error')) return state;
@@ -63,6 +65,9 @@ function errorFor(code: string, message: string): AppleError {
     'not-found': 'לא נמצא (אולי נמחק).',
     'no-calendar': 'אין יומן ברירת מחדל במק.',
     'no-list': 'אין רשימת תזכורות ברירת מחדל.',
+    'camera-denied': `אין לבריין גישה למצלמה של המק. במק: npm run apple:setup, או ${PRIVACY} ← מצלמה ← Brain Helper.`,
+    'camera-unavailable': 'המצלמה של המק לא זמינה. אולי המכסה סגור או שהמק ישן.',
+    'camera-busy': 'המצלמה של המק תפוסה כרגע (אולי שיחת וידאו פתוחה במק).',
   };
   return new AppleError(code, known[code] ?? `שגיאה מ־Apple: ${message}`);
 }
@@ -170,6 +175,8 @@ export interface AppleStatus {
   calendar: string;
   reminders: string;
   contacts: string;
+  /** The Mac's camera: "full" once allowed (older helpers don't report it). */
+  camera?: string;
   calendars: AppleCalendar[];
   lists: AppleList[];
 }
@@ -266,9 +273,22 @@ export function createApple(o: AppleOptions) {
   /** Last known status (sync, for approval cards). */
   const known = () => cached;
   /** Can Brain use this, as far as we know? Notes and Messages are only known when used. */
-  async function has(kind: 'calendar' | 'reminders' | 'contacts' | 'notes' | 'messages'): Promise<boolean> {
+  async function has(kind: 'calendar' | 'reminders' | 'contacts' | 'notes' | 'messages' | 'camera'): Promise<boolean> {
     if (kind === 'notes' || kind === 'messages') return installed();
     return (await status())[kind] === 'full';
+  }
+
+  // ---- camera (the green light next to it is on while it's used)
+  /** One photo, saved as JPEG at `output`. */
+  async function cameraPhoto(output: string): Promise<void> {
+    await call('cameraPhoto', { output }, 25_000);
+  }
+  /**
+   * Live view: the helper keeps the newest frame in `dir`/frame.jpg until `dir`/stop appears, `dir`/alive
+   * goes stale, or `maxSeconds` pass. Resolves when it has stopped.
+   */
+  async function cameraLive(dir: string, maxSeconds: number, fps = 5): Promise<{ frames: number; seconds: number }> {
+    return call('cameraLive', { dir, maxSeconds, fps }, (maxSeconds + 40) * 1000);
   }
 
   // ---- calendar
@@ -339,6 +359,7 @@ export function createApple(o: AppleOptions) {
     installed, status, known, has,
     events, createEvent, reminders, createReminder, completeReminder, contacts,
     searchNotes, readNote, createNote, sendMessage,
+    cameraPhoto, cameraLive,
   };
 }
 

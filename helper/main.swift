@@ -1,16 +1,19 @@
 // Brain Helper: the small Mac app that holds macOS permissions for Calendar, Reminders, Contacts,
-// and (through AppleScript) Notes and Messages. Brain (Node) can't get these permissions itself.
+// the camera, and (through AppleScript) Notes and Messages. Brain (Node) can't get these permissions itself.
 //
 // One request per launch:  open -W -n -g -j -a "Brain Helper.app" --args --request <in.json> --response <out.json>
 // Asking for the permissions (once, at the Mac):  --authorize --response <out.json>
 //
 // Built on the Mac by scripts/apple-setup.ts (swiftc, ad-hoc signed). No network, no files besides
-// the request and response it is given.
+// the request and response it is given (and, for the camera, the photo or the live-view folder it is given).
 
 import AppKit
+import AVFoundation
 import Contacts
+import CoreImage
 import EventKit
 import Foundation
+import ImageIO
 
 let israel = TimeZone(identifier: "Asia/Jerusalem") ?? TimeZone.current
 
@@ -318,8 +321,165 @@ func contacts(_ req: [String: Any]) throws -> Any {
     return ["contacts": list]
 }
 
+// ------------------------------------------------------------------ camera
+// macOS turns on the green light next to the camera whenever it's in use. Nothing here can turn that off.
+
+func cameraStatus() -> String {
+    switch AVCaptureDevice.authorizationStatus(for: .video) {
+    case .authorized: return "full"
+    case .denied: return "denied"
+    case .restricted: return "restricted"
+    case .notDetermined: return "notDetermined"
+    @unknown default: return "unknown"
+    }
+}
+
+func requestCamera() -> Bool {
+    let done = DispatchSemaphore(value: 0)
+    let granted = Box(false)
+    AVCaptureDevice.requestAccess(for: .video) { ok in
+        granted.value = ok
+        done.signal()
+    }
+    done.wait()
+    return granted.value
+}
+
+/// Frames from the built-in camera, as JPEG. The handler returns false to stop receiving them.
+final class FrameGrabber: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    let session = AVCaptureSession()
+    let queue = DispatchQueue(label: "brain.camera")
+    let context = CIContext()
+    let quality: Double
+    let maxWidth: Double
+    let handler: Box<((Data) -> Bool)?>
+
+    init(quality: Double, maxWidth: Double, handler: @escaping (Data) -> Bool) {
+        self.quality = quality
+        self.maxWidth = maxWidth
+        self.handler = Box(handler)
+        super.init()
+    }
+
+    func start() throws {
+        if cameraStatus() != "full" {
+            throw Failure(code: "camera-denied", message: "no camera permission")
+        }
+        // The Mac's own camera, not an iPhone nearby (Continuity Camera) that macOS may prefer.
+        let builtIn = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera], mediaType: .video, position: .unspecified
+        ).devices.first
+        guard let device = builtIn ?? AVCaptureDevice.default(for: .video) else {
+            throw Failure(code: "camera-unavailable", message: "no camera (is the lid closed?)")
+        }
+        let input: AVCaptureDeviceInput
+        do { input = try AVCaptureDeviceInput(device: device) } catch {
+            throw Failure(code: "camera-busy", message: "\(error.localizedDescription)")
+        }
+        session.beginConfiguration()
+        session.sessionPreset = .high
+        guard session.canAddInput(input) else {
+            session.commitConfiguration()
+            throw Failure(code: "camera-busy", message: "camera in use")
+        }
+        session.addInput(input)
+        let output = AVCaptureVideoDataOutput()
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        output.alwaysDiscardsLateVideoFrames = true
+        output.setSampleBufferDelegate(self, queue: queue)
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            throw Failure(code: "camera-busy", message: "no video output")
+        }
+        session.addOutput(output)
+        session.commitConfiguration()
+        session.startRunning()
+    }
+
+    func stop() {
+        handler.value = nil
+        if session.isRunning { session.stopRunning() }
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let take = handler.value, let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        var image = CIImage(cvPixelBuffer: pixels)
+        let scale = min(1.0, maxWidth / Double(image.extent.width))
+        if scale < 1.0 { image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale)) }
+        let key = CIImageRepresentationOption(rawValue: kCGImageDestinationLossyCompressionQuality as String)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let jpeg = context.jpegRepresentation(of: image, colorSpace: space, options: [key: quality])
+        else { return }
+        if !take(jpeg) { handler.value = nil }
+    }
+}
+
+/// One photo. The first frames are dark while the camera adjusts, so it waits a moment.
+func cameraPhoto(_ req: [String: Any]) throws -> Any {
+    let path = str(req, "output")
+    if path.isEmpty { throw Failure(code: "bad-request", message: "no output") }
+    let done = DispatchSemaphore(value: 0)
+    let photo = Box<Data?>(nil)
+    let started = Date()
+    let frames = Box(0)
+    let grabber = FrameGrabber(quality: 0.85, maxWidth: 1600) { jpeg in
+        frames.value += 1
+        if frames.value < 25 && Date().timeIntervalSince(started) < 2.0 { return true }
+        photo.value = jpeg
+        done.signal()
+        return false
+    }
+    try grabber.start()
+    let waited = done.wait(timeout: .now() + 12)
+    grabber.stop()
+    guard waited == .success, let jpeg = photo.value else {
+        throw Failure(code: "camera-unavailable", message: "no picture from the camera")
+    }
+    guard FileManager.default.createFile(atPath: path, contents: jpeg, attributes: [.posixPermissions: 0o600]) else {
+        throw Failure(code: "error", message: "could not save the photo")
+    }
+    return ["bytes": jpeg.count]
+}
+
+/// Live view: the newest frame is kept as <dir>/frame.jpg until Brain writes <dir>/stop, stops touching
+/// <dir>/alive (Brain is gone), or the time is up. Never longer than 10 minutes.
+func cameraLive(_ req: [String: Any]) throws -> Any {
+    let dir = str(req, "dir")
+    if dir.isEmpty { throw Failure(code: "bad-request", message: "no dir") }
+    let maxSeconds = min(600.0, max(5.0, (req["maxSeconds"] as? Double) ?? 300))
+    let fps = min(10.0, max(1.0, (req["fps"] as? Double) ?? 5))
+    let fm = FileManager.default
+    let frame = (dir as NSString).appendingPathComponent("frame.jpg")
+    let partial = (dir as NSString).appendingPathComponent("frame.part")
+    let stopFile = (dir as NSString).appendingPathComponent("stop")
+    let alive = (dir as NSString).appendingPathComponent("alive")
+    let lastWrite = Box(Date.distantPast)
+    let count = Box(0)
+    let grabber = FrameGrabber(quality: 0.6, maxWidth: 960) { jpeg in
+        if Date().timeIntervalSince(lastWrite.value) < 1.0 / fps { return true }
+        lastWrite.value = Date()
+        if fm.createFile(atPath: partial, contents: jpeg, attributes: [.posixPermissions: 0o600]) {
+            _ = try? fm.removeItem(atPath: frame)
+            _ = try? fm.moveItem(atPath: partial, toPath: frame)
+            count.value += 1
+        }
+        return true
+    }
+    try grabber.start()
+    let started = Date()
+    while true {
+        Thread.sleep(forTimeInterval: 0.25)
+        if fm.fileExists(atPath: stopFile) { break }
+        if Date().timeIntervalSince(started) > maxSeconds { break }
+        let touched = (try? fm.attributesOfItem(atPath: alive)[.modificationDate] as? Date) ?? started
+        if Date().timeIntervalSince(touched) > 8 { break }
+    }
+    grabber.stop()
+    return ["frames": count.value, "seconds": Int(Date().timeIntervalSince(started))]
+}
+
 func status() -> Any {
-    var out: [String: Any] = ["calendar": ekStatus(.event), "reminders": ekStatus(.reminder), "contacts": contactsStatus()]
+    var out: [String: Any] = ["calendar": ekStatus(.event), "reminders": ekStatus(.reminder), "contacts": contactsStatus(), "camera": cameraStatus()]
     let store = EKEventStore()
     if ekStatus(.event) == "full" { out["calendars"] = calendars(store) }
     if ekStatus(.reminder) == "full" { out["lists"] = reminderLists(store) }
@@ -332,6 +492,7 @@ func authorize() -> Any {
     if ekStatus(.event) == "notDetermined" { _ = requestEventKit(store, .event) }
     if ekStatus(.reminder) == "notDetermined" { _ = requestEventKit(store, .reminder) }
     if contactsStatus() == "notDetermined" { _ = requestContacts() }
+    if cameraStatus() == "notDetermined" { _ = requestCamera() }
     // Notes and Messages are controlled through AppleScript: macOS asks once for each.
     var notes = "full"
     var messages = "full"
@@ -343,7 +504,7 @@ func authorize() -> Any {
     } catch { messages = "error" }
     return [
         "calendar": ekStatus(.event), "reminders": ekStatus(.reminder), "contacts": contactsStatus(),
-        "notes": notes, "messages": messages,
+        "notes": notes, "messages": messages, "camera": cameraStatus(),
     ]
 }
 
@@ -360,6 +521,8 @@ func handle(_ req: [String: Any]) throws -> Any {
     case "completeReminder": return try completeReminder(req)
     case "contacts": return try contacts(req)
     case "applescript": return ["output": try runAppleScript(str(req, "source"))]
+    case "cameraPhoto": return try cameraPhoto(req)
+    case "cameraLive": return try cameraLive(req)
     default: throw Failure(code: "bad-request", message: "unknown op")
     }
 }

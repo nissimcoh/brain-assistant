@@ -854,3 +854,41 @@ button.file-card { width: 100%; border: 0; font: inherit; text-align: start; bac
 .toggle-list input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .button-row:not(:has(button:not([hidden]))) { display: none; }
+
+/* ---------- attachments ---------- */
+.attach-btn {
+  flex: none; align-self: flex-end; width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-2);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+}
+.attach-btn svg { width: 20px; height: 20px; }
+.attach-btn:active { transform: scale(0.94); }
+.attach-tray { display: flex; gap: 8px; overflow-x: auto; margin: 0 14px 6px; padding: 4px 2px; scrollbar-width: none; }
+.attach-tray[hidden] { display: none; }
+.attach-item {
+  position: relative; flex: none; width: 64px; height: 64px; border-radius: 14px; overflow: hidden;
+  background: var(--glass-bar); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center;
+}
+.attach-item img { width: 100%; height: 100%; object-fit: cover; }
+.attach-item .file-name { font-size: 10px; line-height: 1.2; padding: 4px; text-align: center; color: var(--ink-2); overflow: hidden; max-height: 100%; word-break: break-all; }
+.attach-item .state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 13px; font-weight: 600; }
+.attach-item.failed .state { background: rgba(200, 30, 50, 0.6); }
+.attach-item .remove {
+  position: absolute; top: 3px; inset-inline-end: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0;
+  background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 15px; line-height: 22px; padding: 0; cursor: pointer;
+}
+.msg.user .user-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
+.msg.user .user-attachments:last-child { margin-bottom: 2px; }
+.msg.user .user-photo { width: 140px; height: 140px; object-fit: cover; border-radius: 14px; background: rgba(255, 255, 255, 0.15); border: 0; padding: 0; cursor: pointer; display: block; }
+.msg.user .user-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 14px; display: block; }
+.msg.user .user-file { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, 0.18); color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+.photo-card { display: block; width: 100%; max-width: 360px; border: 0; padding: 0; background: none; cursor: pointer; text-align: start; font: inherit; color: var(--ink-2); }
+.photo-card img { width: 100%; border-radius: var(--r-lg); display: block; background: var(--glass); min-height: 120px; }
+.photo-card span { display: block; font-size: 13px; margin-top: 4px; }
+
+/* ---------- the Mac's camera ---------- */
+.camera-view { position: relative; aspect-ratio: 4 / 3; border-radius: var(--r-lg); overflow: hidden; background: #111; display: flex; align-items: center; justify-content: center; }
+.camera-view img { width: 100%; height: 100%; object-fit: contain; }
+.camera-live { position: absolute; top: 10px; inset-inline-start: 10px; padding: 2px 10px; border-radius: 10px; background: #e5243b; color: #fff; font-size: 13px; font-weight: 700; }
+.camera-live[hidden] { display: none; }
+#camera-state { margin-top: 10px; }

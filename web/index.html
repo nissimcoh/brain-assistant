@@ -63,7 +63,10 @@
       </main>
 
       <p id="draft-warning" class="hint" role="status" hidden>שמירת הטיוטה במכשיר נכשלה. הטקסט זמין כל עוד האפליקציה פתוחה.</p>
+      <div id="attach-tray" class="attach-tray" hidden aria-label="קבצים מצורפים"></div>
       <form id="composer" class="composer">
+        <button id="attach-btn" type="button" class="attach-btn" aria-label="צירוף תמונה, צילום או קובץ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <input id="attach-input" type="file" multiple accept="image/*,.pdf,.doc,.docx,.pages,.rtf,.txt,.md,.csv" hidden />
         <button id="engine-btn" type="button" class="engine-chip" hidden aria-label="איפה עונים: במק או בענן">מק</button>
         <textarea id="input" rows="1" placeholder="כתוב הודעה…" enterkeyhint="send" aria-label="הודעה"></textarea>
         <button id="send-btn" type="submit" class="send" aria-label="שליחה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
@@ -94,6 +97,7 @@
         <ul id="conversation-list" class="conversation-list"></ul>
         <div class="drawer-foot">
           <button id="machine-btn" class="drawer-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M2 19h20"/></svg>המק שלי</button>
+          <button id="camera-btn" class="drawer-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h1.8l1.4-2h6.6l1.4 2h1.8A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z"/><circle cx="12" cy="13" r="3.6"/></svg><span>מצלמת המק</span></button>
           <button id="memory-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7Z"/></svg><span>זיכרון</span></button>
           <button id="settings-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>הגדרות</span></button>
           <button id="activity-btn" class="drawer-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>יומן פעולות</span></button>
@@ -119,6 +123,25 @@
             <pre dir="ltr" id="keyboard-log"></pre>
             <button type="button" class="secondary small" id="keyboard-copy" hidden>העתק מדידה</button>
           </details>
+        </div>
+      </div><div class="sheet-backdrop"></div>
+    </aside>
+
+    <!-- Live view from the Mac's camera -->
+    <aside id="camera-sheet" class="sheet" hidden>
+      <div class="sheet-panel camera-panel" role="dialog" aria-modal="true" aria-labelledby="camera-title">
+        <header class="sheet-head"><h2 id="camera-title">מצלמת המק</h2><button type="button" class="icon-btn sheet-close" aria-label="סגירה">×</button></header>
+        <div class="sheet-body">
+          <div class="camera-view"><img id="camera-frame" alt="מה שהמצלמה של המק רואה עכשיו" hidden /><span id="camera-live" class="camera-live" hidden>חי</span></div>
+          <p id="camera-state" class="hint" role="status"></p>
+          <div class="button-row">
+            <button id="camera-start" class="secondary" type="button" hidden>להתחיל צפייה</button>
+            <button id="camera-stop" class="secondary" type="button" hidden>עצירה</button>
+          </div>
+          <p class="hint">
+            הצפייה פועלת רק כשהמסך הזה פתוח, ועד 5 דקות בכל פעם. במק נדלקת הנורית הירוקה ליד המצלמה ומופיעה התראה,
+            וכל צפייה נרשמת ביומן הפעולות. כדאי שמי שגר איתך יידע שהמצלמה של המק יכולה לשמש לזה.
+          </p>
         </div>
       </div><div class="sheet-backdrop"></div>
     </aside>

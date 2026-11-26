@@ -3,6 +3,17 @@ export interface ChatMessage {
   content: string;
   tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[];
   tool_name?: string;
+  /** Photos, base64 (JPEG/PNG/WebP/GIF), for a model that can see them. */
+  images?: string[];
+}
+
+/** For a model that can't see photos: the photos are left out, and the model is told so. */
+export function withoutImages(messages: ChatMessage[], model: string): ChatMessage[] {
+  return messages.map((m) =>
+    m.images?.length
+      ? { ...m, images: undefined, content: `${m.content}\n[${m.images.length === 1 ? 'צורפה תמונה' : `צורפו ${m.images.length} תמונות`}, אבל המודל ${model} לא רואה תמונות. אפשר לבחור מודל שרואה תמונות בהגדרות, או לכתוב "תעבור לענן".]` }
+      : m,
+  );
 }
 
 export interface StreamStats {
@@ -66,7 +77,7 @@ export async function modelCapabilities(baseUrl: string, model: string): Promise
  */
 export async function modelOptions(baseUrl: string, model: string, think = false) {
   const caps = await modelCapabilities(baseUrl, model);
-  return caps.includes('thinking') ? { think } : {};
+  return { extra: caps.includes('thinking') ? { think } : {}, vision: caps.includes('vision') };
 }
 
 export interface ToolSpec {
@@ -104,14 +115,14 @@ export async function* streamChat(
   const { signal, keepAlive, think, tools, contextLength, maxTokens, temperature } = options;
   let res: Response;
   try {
-    const extra = await modelOptions(baseUrl, model, think);
+    const { extra, vision } = await modelOptions(baseUrl, model, think);
     res = await fetch(`${baseUrl}/api/chat`, {
       redirect: 'error',
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
-        messages,
+        messages: vision ? messages : withoutImages(messages, model),
         stream: true,
         ...extra,
         ...(tools?.length ? { tools } : {}),

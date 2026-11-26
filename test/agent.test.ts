@@ -291,7 +291,8 @@ test('migration keeps stage-0 conversations', () => {
   old.close();
 
   const migrated = openDb(path);
-  assert.equal(migrated.schemaVersion(), 4);
+  assert.equal(migrated.schemaVersion(), 5);
+  assert.equal(migrated.listMessages('c1')[0].attachments, null, 'old messages have no attachments');
   const msgs = migrated.listMessages('c1');
   assert.deepEqual(msgs.map((m) => m.content), ['שלום', 'היי']);
   assert.equal(msgs[1].model, 'gemma4:e4b');
@@ -301,7 +302,7 @@ test('migration keeps stage-0 conversations', () => {
   migrated.close();
   // Opening again is a no-op.
   const again = openDb(path);
-  assert.equal(again.schemaVersion(), 4);
+  assert.equal(again.schemaVersion(), 5);
   again.close();
 });
 

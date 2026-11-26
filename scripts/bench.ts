@@ -148,7 +148,7 @@ async function run(model: string, c: Case) {
       model,
       stream: false,
       options: { num_ctx: config.contextLength },
-      ...(await modelOptions(base, model, THINK)),
+      ...(await modelOptions(base, model, THINK)).extra,
       tools: TOOLS,
       messages: [
         { role: 'system', content: SYSTEM },
@@ -188,7 +188,7 @@ async function sample(model: string, prompt: string): Promise<string> {
       model,
       stream: false,
       options: { num_ctx: config.contextLength },
-      ...(await modelOptions(base, model, THINK)),
+      ...(await modelOptions(base, model, THINK)).extra,
       messages: [
         { role: 'system', content: 'אתה עוזר אישי. ענה בעברית טבעית ותקנית.' },
         { role: 'user', content: prompt },

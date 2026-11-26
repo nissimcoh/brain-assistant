@@ -58,6 +58,14 @@ export function validSubscription(x: unknown): Subscription | null {
   if (!/^[A-Za-z0-9_-]+$/.test(p256dh) || !/^[A-Za-z0-9_-]+$/.test(auth)) return null;
   const key = unb64(p256dh);
   if (key.length !== 65 || key[0] !== 4 || unb64(auth).length !== 16) return null;
+  // A real P-256 public key, not just 65 bytes that look like one.
+  try {
+    const probe = createECDH('prime256v1');
+    probe.generateKeys();
+    probe.computeSecret(key);
+  } catch {
+    return null;
+  }
   return { endpoint: s.endpoint, keys: { p256dh, auth } };
 }
 

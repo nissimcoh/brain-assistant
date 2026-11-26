@@ -41,6 +41,7 @@ and happens only after you tap **Approve**.
 - [Connecting your accounts](#connecting-your-accounts)
 - [The cloud (optional)](#the-cloud-optional)
 - [Notifications](#notifications)
+- [Photos, files and the Mac's camera](#photos-files-and-the-macs-camera)
 - [Claude Code and Codex from your phone](#claude-code-and-codex-from-your-phone)
 - [Configuration](#configuration)
 - [Commands](#commands)
@@ -65,6 +66,8 @@ and happens only after you tap **Approve**.
 | **Memory** | Remember lasting facts about you, search past conversations | Forgetting a fact |
 | **Your Mac** | Battery, disk, memory, open apps | Showing a notification, quitting an app |
 | **Coding agents** | Summarize what Claude Code / Codex did and where they stopped | Sending them a message ("tell it to continue") |
+| **Photos and files from the phone** | See photos you take or pick (the local model sees them too) and read documents you attach (PDF, Word, Pages, text) | — |
+| **The Mac's camera** | A live view on the phone, while you watch (up to 5 minutes) | Taking a photo |
 
 It also:
 
@@ -82,6 +85,8 @@ It also:
 | A new conversation | Tomorrow, from iCloud and Google | Offering the cloud for a long task | Notifications |
 | <img src="docs/screenshots/privacy.jpg" width="190" alt="What the cloud may see"> | <img src="docs/screenshots/memory.jpg" width="190" alt="Memory you can edit"> | <img src="docs/screenshots/menu.jpg" width="190" alt="Conversations and menu"> | <img src="docs/screenshots/pair.jpg" width="190" alt="Pairing a device"> |
 | What the cloud may see | Memory you can edit | Conversations and menu | Pairing a device |
+| <img src="docs/screenshots/upload.jpg" width="190" alt="Sending a photo from the phone"> | <img src="docs/screenshots/photo.jpg" width="190" alt="A photo from the Mac's camera"> | <img src="docs/screenshots/live.jpg" width="190" alt="Live view of the Mac's camera"> |
+| Sending a photo from the phone | A photo from the Mac's camera | Live view of the Mac's camera |
 
 Every screen, step by step, is in the [setup guide](docs/GUIDE.md).
 
@@ -138,6 +143,8 @@ The full details, including what each outside service receives and how to delete
 - **Notifications are end-to-end encrypted.** Each one is encrypted on the Mac for one device ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291))
   and signed with the Mac's own key ([VAPID, RFC 8292](https://www.rfc-editor.org/rfc/rfc8292)). Apple only carries it.
   They go only to the real push services, and a disconnected device gets nothing.
+- **The Mac's camera only when you ask.** A photo only after you approve it; a live view only while you watch, up to 5 minutes.
+  macOS lights the green light, the Mac shows a notification when a live view starts, and photos from the Mac's camera never go to the cloud.
 - **Everything is logged.** The activity log (menu → Activity) shows every tool, approval and cloud request
   (with what was allowed and an estimated cost).
 
@@ -243,10 +250,12 @@ and the permissions in the Keychain. You can disconnect from the app's Settings 
 npm run apple:setup
 ```
 
-It builds **Brain Helper** (`~/Applications/Brain Helper.app`, under a minute) and macOS asks for up to five permissions:
-Calendar and Reminders (**Allow Full Access**), Contacts, and control of Notes and Messages. Approve each one.
+It builds **Brain Helper** (`~/Applications/Brain Helper.app`, under a minute) and macOS asks for up to six permissions:
+Calendar and Reminders (**Allow Full Access**), Contacts, the camera, and control of Notes and Messages. Approve each one
+(without the camera, everything works except photos and live view from the Mac).
+Run it again after updating Brain: a new Brain Helper asks for the permissions again.
 Whatever is on the Mac syncs with the iPhone through iCloud, so there is nothing to do on the phone.
-To revoke: System Settings → Privacy & Security → (Calendars, Reminders, Contacts, Automation) → Brain Helper.
+To revoke: System Settings → Privacy & Security → (Calendars, Reminders, Contacts, Camera, Automation) → Brain Helper.
 
 ### Web search
 
@@ -292,6 +301,22 @@ Settings → Notifications → **Turn on notifications** (from the Home Screen a
 
 You can turn off "Show the start of the reply"; notifications then only say that something is ready.
 Reminders that Brain creates in Apple Reminders ring through the Reminders app as usual.
+
+## Photos, files and the Mac's camera
+
+**From the phone:** the **+** next to the message box offers the photo library, the camera, or a file. Photos are made smaller on the
+phone (up to 1600 px) and kept on the Mac with the conversation; the local model sees them, and so does a cloud model if the
+conversation is in the cloud. Documents (PDF, Word, Pages, RTF, text) are read on the Mac when they arrive, and their text goes to the
+model marked as data, not instructions. Up to 6 attachments of up to 15 MB each per message. Deleting a conversation deletes its files.
+
+**The Mac's camera:**
+
+- *"Take a photo from the Mac"* or *"what's going on at home?"* shows an approval card. After you approve, Brain takes one photo,
+  shows it in the conversation and describes it. The photo is never sent to the cloud.
+- Menu → **Mac camera** is a live view, for as long as that screen is open, up to 5 minutes at a time. Nothing is recorded.
+
+Either way, the green light next to the camera turns on, the Mac shows a notification when a live view starts, and both are in the activity log.
+The camera only works while the Mac is awake with its lid open. Let the people you live with know it can be used this way.
 
 ## Claude Code and Codex from your phone
 
@@ -389,4 +414,4 @@ so they never touch your data or the network. [TESTING.md](TESTING.md) has the m
 
 ## License
 
-No license has been chosen yet, so all rights are reserved for now. One will be added before the repository becomes public.
+[MIT](LICENSE) © 2026 Nissim Cohen.

@@ -111,7 +111,7 @@ function httpError(provider: Provider, status: number, body: string): CloudError
 
 interface Call { id: string; name: string; args: Record<string, unknown> }
 type Turn =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system' | 'user'; content: string; images?: string[] }
   | { role: 'assistant'; content: string; calls: Call[] }
   | { role: 'tool'; id: string; name: string; content: string };
 
@@ -142,11 +142,20 @@ export function pairCalls(messages: ChatMessage[]): Turn[] {
       out.push({ role: 'assistant', content: m.content, calls });
       open = [...calls];
     } else {
-      out.push({ role: m.role, content: m.content });
+      out.push({ role: m.role, content: m.content, ...(m.role === 'user' && m.images?.length ? { images: m.images } : {}) });
     }
   }
   close();
   return out;
+}
+
+/** The media type of a base64 photo, from its first bytes. */
+export function imageType(b64: string): string {
+  const head = Buffer.from(b64.slice(0, 24), 'base64');
+  if (head[0] === 0x89 && head[1] === 0x50) return 'image/png';
+  if (head.subarray(0, 4).toString('latin1') === 'RIFF') return 'image/webp';
+  if (head.subarray(0, 3).toString('latin1') === 'GIF') return 'image/gif';
+  return 'image/jpeg';
 }
 
 export function toOpenAI(messages: ChatMessage[]): Record<string, unknown>[] {
@@ -159,6 +168,15 @@ export function toOpenAI(messages: ChatMessage[]): Record<string, unknown>[] {
         ...(t.calls.length
           ? { tool_calls: t.calls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } })) }
           : {}),
+      };
+    }
+    if (t.role === 'user' && t.images?.length) {
+      return {
+        role: 'user',
+        content: [
+          ...t.images.map((img) => ({ type: 'image_url', image_url: { url: `data:${imageType(img)};base64,${img}` } })),
+          { type: 'text', text: t.content || '…' },
+        ],
       };
     }
     return { role: t.role, content: t.content };
@@ -177,7 +195,10 @@ export function toAnthropic(messages: ChatMessage[]): { system: string; messages
   };
   for (const t of pairCalls(messages)) {
     if (t.role === 'system') system.push(t.content);
-    else if (t.role === 'user') push('user', { type: 'text', text: t.content || '…' });
+    else if (t.role === 'user') {
+      for (const img of t.images ?? []) push('user', { type: 'image', source: { type: 'base64', media_type: imageType(img), data: img } });
+      push('user', { type: 'text', text: t.content || '…' });
+    }
     else if (t.role === 'tool') push('user', { type: 'tool_result', tool_use_id: t.id, content: t.content });
     else if (t.role === 'assistant') {
       if (t.content) push('assistant', { type: 'text', text: t.content });

@@ -1,5 +1,5 @@
 // Each worker serves a complete, versioned shell, even on a stalled Wi-Fi or VPN connection.
-const CACHE = 'brain-shell-v39';
+const CACHE = 'brain-shell-v40';
 const SHELL = ['/index.html', '/app.js', '/drafts.js', '/styles.css', '/manifest.webmanifest', '/icon.svg', '/icon-180.png', '/icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

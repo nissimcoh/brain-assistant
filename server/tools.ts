@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { machineMetrics } from './mac.ts';
 import type { ToolSpec } from './ollama.ts';
-import type { Memory, SearchHit } from './db.ts';
+import type { Attachment, Memory, SearchHit } from './db.ts';
 import { FileAccessError, type Files, formatSize } from './files.ts';
 import { addDays, type Google, GoogleError, heDay, israelInstant, matchAccount, resolveDays, TZ, validTime } from './google.ts';
 import { type Apple, AppleError, normalizeRecipient } from './apple.ts';
@@ -45,6 +45,11 @@ export interface ToolContext {
   keepSent?: (file: { path: string; name: string; size: number }) => string;
   /** Claude Code and Codex conversations on this Mac (agents.ts). */
   agents?: Agents;
+  /** The Mac's own camera (apple.ts through Brain Helper; photos kept by uploads.ts). */
+  camera?: {
+    available(): Promise<boolean>;
+    photo(conversationId?: string): Promise<Attachment>;
+  };
 }
 
 export interface ToolResult {
@@ -53,6 +58,8 @@ export interface ToolResult {
   attachment?: { name: string; size: number; url: string };
   /** What the app shows for this result (a list of mails, a folder, a file), kept with the conversation. */
   display?: Record<string, unknown>;
+  /** Photos that come with the result (the Mac's camera): kept with it, and shown to a model on the Mac. */
+  images?: Attachment[];
 }
 
 export interface ToolField {
@@ -72,7 +79,7 @@ export interface ToolParam {
 export interface Tool {
   name: string;
   /** Category, used by the activity log. */
-  group: 'clock' | 'mac' | 'memory' | 'files' | 'web' | 'mail' | 'contacts' | 'calendar' | 'reminders' | 'notes' | 'messages' | 'agents';
+  group: 'clock' | 'mac' | 'memory' | 'files' | 'web' | 'mail' | 'contacts' | 'calendar' | 'reminders' | 'notes' | 'messages' | 'agents' | 'camera';
   /** Short Hebrew name shown in the app and the activity log. */
   label: string;
   description: string;
@@ -208,6 +215,33 @@ const macNotification: Tool = {
       args.title || 'Brain',
     ]);
     return 'ההתראה הוצגה במק.';
+  },
+};
+
+/**
+ * One photo from the Mac's own camera. Always after approval: the camera may be pointing at people at home.
+ * macOS turns on the green light next to the camera while it's in use; Brain can't turn that off.
+ */
+const macCameraPhoto: Tool = {
+  name: 'mac_camera_photo',
+  group: 'camera',
+  label: 'צילום במצלמת המק',
+  description:
+    "Take one photo with the Mac's built-in camera and show it to the user (\"take a photo from the Mac\", \"what's going on at home\"). " +
+    'Runs only after the user approves. You will see the photo and can describe it.',
+  params: {},
+  required: [],
+  requiresApproval: true,
+  fields: [],
+  summarize: () => 'לצלם תמונה אחת במצלמה של המק. הנורית הירוקה ליד המצלמה תידלק.',
+  async run(_args, ctx) {
+    if (!ctx.camera || !(await ctx.camera.available())) throw new Error('המצלמה של המק לא מחוברת לבריין. במק: npm run apple:setup');
+    const photo = await ctx.camera.photo(ctx.conversationId);
+    return {
+      text: 'צילמתי תמונה אחת במצלמה של המק, והיא מוצגת למשתמש בשיחה.',
+      display: { kind: 'photo', id: photo.id, name: photo.name, size: photo.size, source: 'camera' },
+      images: [photo],
+    };
   },
 };
 
@@ -1317,8 +1351,9 @@ export const PERSONAL_TOOLS: Tool[] = [
   notesSearch, noteRead, noteCreate,
   messageSend,
   agentSessions, agentSession, agentSend,
+  macCameraPhoto,
 ];
-export const PERSONAL_GROUPS = ['mail', 'contacts', 'calendar', 'reminders', 'notes', 'messages', 'agents'] as const;
+export const PERSONAL_GROUPS = ['mail', 'contacts', 'calendar', 'reminders', 'notes', 'messages', 'agents', 'camera'] as const;
 export type PersonalGroup = (typeof PERSONAL_GROUPS)[number];
 
 export const ALL_TOOLS: Tool[] = [
