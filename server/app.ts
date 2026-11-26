@@ -6,7 +6,8 @@ import type { Db, Device } from './db.ts';
 import { createAuth } from './auth.ts';
 import { listModels, loadedModels, OllamaError, warmUp } from './ollama.ts';
 import { type CloudDeps, createAgent, type Emit, type Engine, type Settings, shouldThink, type ThinkingMode } from './agent.ts';
-import { type AgentJob, type Agents, createAgents } from './agents.ts';
+import { AGENT_NAMES, type AgentJob, type Agents, createAgents } from './agents.ts';
+import { createPush, type Notice, type Push, type StoredSubscription, validSubscription, type VapidKeys } from './push.ts';
 import { CATEGORY_NAMES, cloudSettings, type CloudSettings, DATA_CATEGORIES, modelName, type Provider, PROVIDER_NAMES, PROVIDERS } from './cloud.ts';
 import { createFiles, defaultPolicy, type Files } from './files.ts';
 import { machineMetrics, requestQuit, runningApps } from './mac.ts';
@@ -16,7 +17,7 @@ import { createWeb, type Web } from './web.ts';
 import { randomUUID } from 'node:crypto';
 import { createToolRegistry, defaultExec, type Exec, snippet, sensitiveReason, MAX_MEMORIES, type ToolContext, ToolInputError, type ToolRegistry } from './tools.ts';
 
-export const VERSION = '0.15.0';
+export const VERSION = '0.16.0';
 
 const MAX_MEMORY_CHARS = 500;
 
@@ -143,10 +144,26 @@ export function createApp(
     cloudFetch?: typeof fetch;
     /** Claude Code / Codex on this Mac (null: none; tests pass their own). */
     agents?: Agents | null;
+    /** Replaces the network for the push services (tests). */
+    pushFetch?: typeof fetch;
   } = {},
 ) {
   const auth = createAuth(db);
   const tools = options.tools ?? createToolRegistry();
+
+  // ---- notifications to the phone (push.ts): sealed on the Mac, only paired devices ----
+  const push: Push = createPush({
+    subscriptions: { load: () => db.getSetting<StoredSubscription[]>('push.subscriptions', []), save: (l) => db.setSetting('push.subscriptions', l) },
+    keys: { load: () => db.getSetting<VapidKeys | null>('push.vapid', null), save: (k) => db.setSetting('push.vapid', k) },
+    activeDevices: () => new Set(db.listDevices().filter((d) => !d.revoked).map((d) => d.id)),
+    fetch: options.pushFetch,
+    log: (event, details) => db.audit(event, details),
+  });
+  /** With "show content" off, a notification only says that something happened, not what. */
+  function notify(notice: Notice, opts?: { urgent?: boolean; deviceId?: string }) {
+    const preview = db.getSetting<boolean>('push.preview', true);
+    return push.send(preview ? notice : { ...notice, body: 'פתח את בריין כדי לראות.' }, opts).catch(() => 0);
+  }
 
   const settings = (): Settings => ({
     localModel: db.getSetting('localModel', config.localModel),
@@ -197,6 +214,7 @@ export function createApp(
             : createAgents({
                 jobs: { load: () => db.getSetting<AgentJob[]>('agents.jobs', []), save: (jobs) => db.setSetting('agents.jobs', jobs) },
                 log: (event, details) => db.audit(event, details),
+                onFinish: (job, next) => void notifyAgent(job, next),
               }))),
     // A file sent to the phone stays with the conversation: the app asks for it again by this id.
     keepSent: (file) => {
@@ -339,9 +357,37 @@ export function createApp(
           ? `החיבור של ${a.label} (${a.email}) פג מחר. בטרמינל: npm run google:connect`
           : `החיבור של ${a.label} (${a.email}) פג. בטרמינל: npm run google:connect`;
       await exec('osascript', ['-e', 'on run argv', '-e', 'display notification (item 1 of argv) with title "Brain – Google"', '-e', 'end run', text]).catch(() => {});
+      void notify({ title: 'Google צריך חידוש', body: text, tag: `google-${a.key}` });
       sent.push(a.email);
     }
     return sent;
+  }
+
+  /** An answer finished after the phone left the app: what it says, or the approval it waits for. */
+  async function notifyAnswer(conversationId: string) {
+    const conv = db.getConversation(conversationId);
+    if (!conv) return;
+    const url = `/?c=${conversationId}`;
+    const pending = db.pendingActions(conversationId)[0];
+    if (pending) {
+      const what = tools.get(pending.tool)?.label ?? 'פעולה';
+      await notify({ title: 'מחכה לאישור שלך', body: `${what} · ${conv.title}`, url, tag: conversationId }, { urgent: true });
+      return;
+    }
+    const last = db.listMessages(conversationId).reverse().find((m) => m.role === 'assistant' && m.content.trim());
+    if (!last) return;
+    await notify({ title: conv.title || 'בריין', body: last.content, url, tag: conversationId });
+  }
+
+  /** A message sent to Claude Code / Codex came back. */
+  async function notifyAgent(job: AgentJob, next?: number) {
+    const title = `${AGENT_NAMES[job.agent]} · ${job.project}`;
+    const at = (t: number) => new Date(t).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+    const body =
+      job.status === 'done' ? `סיים: ${job.result || 'בלי סיכום.'}` :
+      job.status === 'limited' ? (next ? `נגמר ה־usage. אשלח לו להמשיך ב־${at(next)}.` : 'נגמר ה־usage, וכבר ניסיתי להמשיך 5 פעמים. כדאי לבדוק בשיחה.') :
+      `נעצר: ${job.result || 'שגיאה.'}`;
+    await notify({ title, body, tag: `agent-${job.sessionId}` });
   }
 
   async function ollama(maxWaitMs: number) {
@@ -421,6 +467,8 @@ export function createApp(
       if (runs.get(conversationId)?.controller === controller) runs.delete(conversationId);
       finish();
     }
+    // The phone left while Brain was answering: tell it the answer is ready (not after a stop).
+    if (res.destroyed && !controller.signal.aborted) void notifyAnswer(conversationId);
     if (!res.destroyed) res.end();
   }
 
@@ -878,6 +926,35 @@ export function createApp(
       throw new HttpError(400, 'בדיקה לא מוכרת');
     }
 
+    // ----- notifications -----
+    if (path === '/api/push') {
+      if (method === 'GET') {
+        return send(res, 200, { publicKey: push.publicKey(), subscribed: push.has(device.id), preview: db.getSetting<boolean>('push.preview', true) });
+      }
+      if (method === 'POST') {
+        const sub = validSubscription((await readJson(req)).subscription);
+        if (!sub) throw new HttpError(400, 'המנוי להתראות לא תקין');
+        push.subscribe(device.id, sub);
+        db.audit('push.subscribed', { deviceId: device.id, service: new URL(sub.endpoint).hostname });
+        return send(res, 200, { subscribed: true });
+      }
+      if (method === 'PUT') {
+        const body = await readJson(req);
+        if (typeof body.preview !== 'boolean') throw new HttpError(400, 'הגדרה לא תקינה');
+        db.setSetting('push.preview', body.preview);
+        db.audit('settings.changed', { deviceId: device.id, pushPreview: body.preview });
+        return send(res, 200, { preview: body.preview });
+      }
+      if (method === 'DELETE') {
+        if (push.unsubscribe(device.id)) db.audit('push.unsubscribed', { deviceId: device.id });
+        return send(res, 200, { subscribed: false });
+      }
+    }
+    if (path === '/api/push/test' && method === 'POST') {
+      const delivered = await notify({ title: 'בריין', body: 'ההתראות עובדות. כך תדע כשתשובה מוכנה, כשמשהו מחכה לאישור, או כשסוכן קוד סיים.', tag: 'test' }, { deviceId: device.id });
+      return send(res, 200, { delivered });
+    }
+
     if (path === '/api/devices' && method === 'GET') {
       return send(
         res,
@@ -888,6 +965,7 @@ export function createApp(
     const dev = path.match(new RegExp(`^/api/devices/(${UUID})$`));
     if (dev && method === 'DELETE') {
       if (!db.revokeDevice(dev[1])) throw new HttpError(404, 'המכשיר לא נמצא');
+      push.unsubscribe(dev[1]);
       db.audit('device.revoked', { by: device.id, deviceId: dev[1] });
       return send(res, 200, { ok: true });
     }

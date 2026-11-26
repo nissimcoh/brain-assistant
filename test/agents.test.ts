@@ -139,7 +139,7 @@ function fakeSpawn(reply: (s: Spawned) => { stdout?: string; code?: number }) {
   return { spawn, calls };
 }
 const settle = () => new Promise((r) => setTimeout(r, 20));
-function agentsWith(spawn: never, clock = { t: Date.now() }) {
+function agentsWith(spawn: never, clock = { t: Date.now() }, finished: { status: string; next?: number }[] = []) {
   let jobs: AgentJob[] = [];
   const a = createAgents({
     home,
@@ -147,6 +147,7 @@ function agentsWith(spawn: never, clock = { t: Date.now() }) {
     jobs: { load: () => jobs, save: (j) => (jobs = j) },
     spawn,
     now: () => clock.t,
+    onFinish: (job, next) => finished.push({ status: job.status, next }),
   });
   return a;
 }
@@ -194,9 +195,11 @@ test('usage limit: the request waits for the reset, then "continue" goes out by 
       ? { stdout: JSON.stringify({ is_error: true, result: `Claude AI usage limit reached|${reset}` }), code: 1 }
       : { stdout: JSON.stringify({ is_error: false, result: 'סיימתי.' }) },
   );
-  const a = agentsWith(f.spawn, clock);
+  const finished: { status: string; next?: number }[] = [];
+  const a = agentsWith(f.spawn, clock, finished);
   a.send(a.find(claudeId)!, 'תתקן את כל הבאגים');
   await settle();
+  assert.deepEqual(finished, [{ status: 'limited', next: reset * 1000 + 60_000 }], 'the phone hears it stopped, and when it goes on');
   const waiting = a.jobs().find((j) => j.status === 'scheduled')!;
   assert.equal(a.jobs().find((j) => j.status === 'limited')?.message, 'תתקן את כל הבאגים');
   assert.equal(waiting.runAt, reset * 1000 + 60_000);
@@ -209,6 +212,7 @@ test('usage limit: the request waits for the reset, then "continue" goes out by 
   assert.equal(f.calls.length, 2);
   assert.match(f.calls[1].stdin, /המשך מאיפה שעצרת/);
   assert.equal(a.jobs().at(-1)!.status, 'done');
+  assert.equal(finished.at(-1)!.status, 'done', 'and again when it finished');
 });
 
 test('not while it works on it, and only one message at a time', async () => {

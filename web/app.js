@@ -192,6 +192,7 @@ async function showChat() {
   if (!navigator.onLine) { state.online = false; renderStatus(); return; }
   warm();
   remindGoogleRenewal();
+  void syncPush();
   const restore = store.conversationId;
   await Promise.all([
     refreshStatus(),
@@ -1116,6 +1117,118 @@ function renderCloudSettings(c) {
     `לא זמין: ${c.reason}.`;
 }
 
+// ---------------- notifications ----------------
+// iPhone: only in the app added to the Home Screen (iOS 16.4 and later). The Mac seals every
+// notification for this device's key (server/push.ts); Apple only carries it.
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let pushKey = null;
+
+function keyBytes(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+function sameKey(sub, key) {
+  const a = sub?.options?.applicationServerKey;
+  if (!a) return true;
+  const b = keyBytes(key);
+  const x = new Uint8Array(a);
+  return x.length === b.length && x.every((v, i) => v === b[i]);
+}
+
+async function renderPush() {
+  const st = $('#push-state');
+  const btn = $('#push-btn');
+  const test = $('#push-test');
+  btn.hidden = test.hidden = $('#push-preview-row').hidden = true;
+  if (!pushSupported()) {
+    st.textContent = /iPhone|iPad/.test(navigator.userAgent) && !standalone()
+      ? 'התראות עובדות רק כשפותחים את בריין מהאפליקציה שבמסך הבית, לא מ־Safari.'
+      : 'המכשיר או הדפדפן הזה לא תומכים בהתראות.';
+    return;
+  }
+  try {
+    const info = await (await api('/api/push')).json();
+    pushKey = info.publicKey;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const on = Notification.permission === 'granted' && sub && info.subscribed && sameKey(sub, info.publicKey);
+    $('#push-preview').checked = info.preview;
+    if (Notification.permission === 'denied') {
+      st.textContent = 'ההתראות חסומות. אפשר להפעיל אותן בהגדרות האייפון ← התראות ← בריין.';
+      return;
+    }
+    st.textContent = on ? 'פועלות במכשיר הזה.' : 'כבויות במכשיר הזה.';
+    btn.textContent = on ? 'כיבוי התראות' : 'הפעלת התראות';
+    btn.dataset.on = on ? '1' : '';
+    btn.hidden = false;
+    test.hidden = !on;
+    $('#push-preview-row').hidden = !on;
+  } catch (err) {
+    if (handleUnauthorized(err)) return;
+    st.textContent = err.message;
+  }
+}
+
+async function togglePush() {
+  const st = $('#push-state');
+  if ($('#push-btn').dataset.on) {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    await sub?.unsubscribe().catch(() => {});
+    await api('/api/push', { method: 'DELETE' }).catch(() => {});
+    return renderPush();
+  }
+  // iOS asks only right after a tap: nothing may be awaited before this.
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') return renderPush();
+  try {
+    st.textContent = 'מפעיל…';
+    const reg = await navigator.serviceWorker.ready;
+    pushKey ??= (await (await api('/api/push')).json()).publicKey;
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub, pushKey)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
+    await api('/api/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+  } catch (err) {
+    if (handleUnauthorized(err)) return;
+    st.textContent = `לא הצלחתי להפעיל: ${err.message}`;
+    return;
+  }
+  await renderPush();
+}
+
+async function testPush() {
+  const st = $('#push-state');
+  st.textContent = 'שולח…';
+  try {
+    const r = await (await api('/api/push/test', { method: 'POST' })).json();
+    st.textContent = r.delivered ? 'נשלחה. היא אמורה להופיע בעוד כמה שניות (גם כשהאפליקציה פתוחה).' : 'לא נשלחה. נסה לכבות ולהפעיל שוב.';
+  } catch (err) {
+    if (!handleUnauthorized(err)) st.textContent = err.message;
+  }
+}
+
+/** On every opening: the Mac keeps this device's current address (it can change, or the Mac may have lost it). */
+async function syncPush() {
+  if (!pushSupported() || Notification.permission !== 'granted') return;
+  try {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (sub) await api('/api/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+  } catch {
+    // Next time.
+  }
+}
+
+/** A tapped notification names a conversation: /?c=<id>. */
+function conversationFromUrl(url) {
+  const c = new URL(url, location.origin).searchParams.get('c');
+  return c && /^[0-9a-f-]{36}$/.test(c) ? c : null;
+}
+
 // ---------------- conversations ----------------
 let viewSequence = 0;
 async function openConversation(id) {
@@ -1834,6 +1947,7 @@ async function openSettings() {
   void checkFileAccess();
   void checkGoogle();
   void checkApple();
+  void renderPush();
   try {
     const s = await (await api('/api/settings')).json();
     const select = $('#model-select');
@@ -2321,6 +2435,15 @@ for (const r of document.querySelectorAll('input[name="cloud-mode"]')) {
   r.addEventListener('change', () => saveSetting({ cloud: { mode: r.value } }));
 }
 $('#cloud-provider').addEventListener('change', (e) => saveSetting({ cloud: { provider: e.target.value } }));
+$('#push-btn').addEventListener('click', togglePush);
+$('#push-test').addEventListener('click', testPush);
+$('#push-preview').addEventListener('change', async (e) => {
+  try {
+    await api('/api/push', { method: 'PUT', body: JSON.stringify({ preview: e.target.checked }) });
+  } catch (err) {
+    if (!handleUnauthorized(err)) $('#push-state').textContent = err.message;
+  }
+});
 // The switch next to the box must not close the keyboard: it never takes focus from the text box,
 // and if iOS moved focus anyway, it goes back within the same tap.
 {
@@ -2389,6 +2512,15 @@ if ('serviceWorker' in navigator) {
     reloading = true;
     location.reload();
   };
+  // A notification tapped while the app was open.
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    const id = e.data?.type === 'open' ? conversationFromUrl(e.data.url) : null;
+    if (id && store.token) {
+      closeDrawer();
+      for (const sheet of document.querySelectorAll('.sheet')) sheet.hidden = true;
+      void openConversation(id);
+    }
+  });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (hadController) reloadWhenIdle(); // the very first install isn't an update
   });
@@ -2404,5 +2536,11 @@ if ('serviceWorker' in navigator) {
     .catch(() => {});
 }
 
+// Opened from a notification: start at its conversation.
+{
+  const id = conversationFromUrl(location.href);
+  if (location.search) history.replaceState(null, '', '/');
+  if (id && store.token) store.conversationId = id;
+}
 if (store.token) showChat();
 else showPair();

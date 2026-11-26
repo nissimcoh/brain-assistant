@@ -329,6 +329,8 @@ export interface AgentsOptions {
   now?: () => number;
   /** Called when a job changes (for the activity log). */
   log?: (event: string, details: Record<string, unknown>) => void;
+  /** Called when a request ends: done, failed, or stopped by the usage limit (with when it goes on). */
+  onFinish?: (job: AgentJob, next?: number) => void;
 }
 
 export function createAgents(opts: AgentsOptions) {
@@ -486,13 +488,14 @@ export function createAgents(opts: AgentsOptions) {
       saveJob(job);
       opts.log?.('agent.limited', { jobId: job.id, agent: job.agent, project: job.project });
       // The plan's limit: the same request goes on by itself when it resets.
-      if (job.retries < MAX_RETRIES) {
+      const next = job.retries < MAX_RETRIES ? parseReset(problem, now()) + 60_000 : undefined;
+      if (next !== undefined) {
         saveJob({
           ...job,
           id: randomUUID(),
           message: 'המשך מאיפה שעצרת (נעצרת כי נגמר ה־usage).',
           status: 'scheduled',
-          runAt: parseReset(problem, now()) + 60_000,
+          runAt: next,
           createdAt: now(),
           startedAt: undefined,
           endedAt: undefined,
@@ -500,6 +503,7 @@ export function createAgents(opts: AgentsOptions) {
           retries: job.retries + 1,
         });
       }
+      opts.onFinish?.(job, next);
       return;
     }
     job.status = isError ? 'failed' : 'done';
@@ -507,6 +511,7 @@ export function createAgents(opts: AgentsOptions) {
     job.endedAt = now();
     saveJob(job);
     opts.log?.(isError ? 'agent.failed' : 'agent.done', { jobId: job.id, agent: job.agent, project: job.project });
+    opts.onFinish?.(job);
   }
 
   /**

@@ -852,3 +852,5 @@ button.file-card { width: 100%; border: 0; font: inherit; text-align: start; bac
 .choice-card.done .ac-status { color: var(--ink-2); }
 .toggle-list .toggle-row { display: flex; align-items: center; gap: 10px; font-weight: 500; padding: 4px 0; }
 .toggle-list input[type='checkbox'] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.button-row:not(:has(button:not([hidden]))) { display: none; }

@@ -1,228 +1,362 @@
 # Brain · בריין
 
-עוזר אישי בעברית שרץ על המק שלך. מדברים איתו מהאייפון, מכל מקום, דרך חיבור פרטי ומוצפן.
-כל המידע, ההרשאות והמודל המקומי נשארים במק. עם מפתח, מודל בענן (Claude או GPT) עונה על השיחות ורואה רק מה שהתרת; הכלים והפעולות נשארים במק.
+**A private, Hebrew-speaking personal assistant that runs on your Mac and that you talk to from your iPhone.**
 
-> סטטוס: שלב 6. צ'אט בעברית עם מודל מקומי (Ollama), היסטוריה, צימוד מכשירים, גישה מרחוק דרך Tailscale,
-> כלים עם כרטיסי אישור, בחירת מודל ומצב חשיבה, יומן פעולות, זיכרון שאפשר לערוך ולמחוק, חיפוש בשיחות,
-> חיפוש, קריאה ושליחה של קבצים מהמק, Gmail ו־Google Calendar, והיומן, התזכורות, אנשי הקשר, הפתקים וההודעות של Apple.
-> מצב היברידי: משימה מורכבת יכולה לעבור למודל בענן (OpenAI או Anthropic), באישור ולפי הגדרות פרטיות.
-> קול ו־WhatsApp מגיעים בשלבים הבאים.
+[עברית](README.he.md)
 
-## המק שלי
+Brain lives on your Mac. It reads your mail, calendar, reminders, notes, contacts and files, searches the web,
+and keeps an eye on your coding agents (Claude Code and Codex). You talk to it from an app on your iPhone's Home Screen,
+from anywhere, over your own private network. Nothing is opened to the internet.
 
-לחיצה על מצב החיבור בכותרת, או על ״המק שלי״ בתפריט, מציגה סוללה, אחסון, זיכרון ואפליקציות פתוחות. הנתונים מגיעים מהמק בעת פתיחת המסך וברענון. מסך זה זמין למכשירים מצומדים. כפתור סגירה מבקש אישור ושולח בקשת סגירה רגילה למופע המסוים של האפליקציה. ייתכן שמסמך שממתין לשמירה ידרוש פעולה במק.
+It sees everything, but it never changes anything on its own: every email, message, event, reminder, note,
+deleted file or message to a coding agent is shown to you first on a card, with the recipient and the exact text,
+and happens only after you tap **Approve**.
 
-לאחר פתיחה ראשונה עם חיבור פעיל, האפליקציה שומרת את קובצי הממשק לפתיחה גם כשהמק מנותק. השיחות והנתונים מתקבלים מהמק. לגרסת הממשק v22 יש מדידת מקלדת זמנית תחת ״המק שלי״, ששומרת בזיכרון הדף זמנים ומידות מסך למשך הבדיקה.
+> Brain speaks Hebrew: the app, its answers and the setup scripts are in Hebrew. This README is the English guide.
 
-## כלים ואישורים
+---
 
-| כלי | מה הוא עושה | צריך אישור |
+## Contents
+
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Privacy and security](#privacy-and-security)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Connecting your accounts](#connecting-your-accounts)
+- [The cloud (optional)](#the-cloud-optional)
+- [Notifications](#notifications)
+- [Claude Code and Codex from your phone](#claude-code-and-codex-from-your-phone)
+- [Configuration](#configuration)
+- [Commands](#commands)
+- [Project structure](#project-structure)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
+## What it does
+
+| Area | Brain can… | Needs your approval |
 | --- | --- | --- |
-| תאריך ושעה | התאריך והשעה בישראל | לא |
-| מצב המק | סוללה, דיסק, זיכרון, זמן פעולה | לא |
-| התראה במק | מציג התראה על מסך המק | כן |
-| שמירה בזיכרון | שומר עובדה קבועה ("תזכור ש…") | לא (מופיע 🧠, אפשר למחוק) |
-| מחיקה מהזיכרון | מוחק עובדה ("תשכח את…") | כן |
-| חיפוש בשיחות קודמות | מחפש מילה או ביטוי בכל השיחות | לא |
-| חיפוש קבצים | Spotlight: לפי שם ולפי תוכן | לא |
-| קריאת קובץ | טקסט, PDF, Word, Pages ועוד | לא |
-| שליחת קובץ לטלפון | נשמר בשיחה ובאייפון, נפתח עם סגירה ושיתוף | לא |
-| תוכן תיקייה | שולחן העבודה, הורדות, מסמכים או כל תיקייה מותרת | לא |
-| העברה לסל | קובץ או תיקייה, לסל של המק (אפשר להחזיר) | כן |
-| חיפוש באינטרנט | Tavily אם יש מפתח, אחרת DuckDuckGo מהמק | לא |
-| קריאת עמוד | עמוד אינטרנט; לא כתובות במק או ברשת הביתית | לא |
-| חיפוש וקריאה במייל | Gmail, בתחביר החיפוש של Gmail | לא |
-| חיפוש איש קשר | כתובת מייל לפי שם, מאנשי הקשר של Google | לא |
-| שליחת מייל | מ־Gmail שלך, כולל תשובה באותו שרשור | כן |
-| סימון כנקרא | כמה מיילים שרוצים בבת אחת, לפי חיפוש | כן |
-| חיפוש איש קשר | טלפון ומייל, מאנשי הקשר של האייפון/המק ומ־Google | לא |
-| בדיקת היומן | היומן של האייפון/המק (iCloud) ו־Google יחד, כל אירוע פעם אחת | לא |
-| אירוע ביומן | ביומן של המק (ברירת מחדל) או ב־Google; מוזמנים רק ב־Google | כן |
-| תזכורות | רשימת התזכורות הפתוחות | לא |
-| תזכורת חדשה / בוצעה | בתזכורות של Apple; עם שעה היא מצלצלת באייפון | כן |
-| פתקים | חיפוש וקריאה | לא |
-| פתק חדש | ב־Notes, מופיע גם באייפון | כן |
-| שליחת הודעה | iMessage (או SMS דרך האייפון) מהמק. לא וואטסאפ | כן |
-| בדיקת היומן | כל היומנים המסומנים ב־Google Calendar, בשעון ישראל | לא |
-| שיחות עם Claude ו־Codex | מה סוכני הקוד במק עושים: עובד, סיים, נעצר (גם בגלל usage) | לא |
-| קריאת שיחה עם סוכן | מה ביקשת, מה הוא ענה ועשה, אילו קבצים שינה | לא |
-| הודעה ל־Claude או Codex | "תגיד לו להמשיך": נשלח לאותה שיחה, והסוכן עובד עם ההרשאות שלו | כן |
-| אירוע ביומן | אירוע חדש; מוזמנים מקבלים הזמנה במייל | כן |
+| **Mail (Gmail)** | Search and read mail across several accounts, find contacts | Sending, replying, marking as read |
+| **Calendar** | Read the iPhone/Mac calendar (iCloud) and Google Calendar together | Creating an event |
+| **Reminders** | List open reminders | Creating one (it rings on the iPhone) or completing one |
+| **Notes** | Search and read Apple Notes | Creating a note |
+| **Messages** | Find a contact's phone number | Sending an iMessage or SMS from the Mac |
+| **Files** | Search (Spotlight), read (text, PDF, Word, Pages…), list folders, send a file to the phone | Moving to the Trash (never deleting) |
+| **Web** | Search (Tavily, or DuckDuckGo without a key) and read pages | — |
+| **Memory** | Remember lasting facts about you, search past conversations | Forgetting a fact |
+| **Your Mac** | Battery, disk, memory, open apps | Showing a notification, quitting an app |
+| **Coding agents** | Summarize what Claude Code / Codex did and where they stopped | Sending them a message ("tell it to continue") |
 
-## קבצים
+It also:
 
-בריין רואה את כל תיקיית הבית, וגם את iCloud Drive. הוא **לא** רואה מקומות שמחזיקים סודות:
-`.ssh`, `.gnupg`, `.aws`, Keychain, עוגיות ונתוני דפדפנים, Messages, Mail ו־`~/.brain`.
-הבדיקה נעשית על הנתיב האמיתי, אחרי מעקב אחרי קיצורי דרך, כך שקיצור דרך לא עוקף אותה.
-אין לו שום כלי שמשנה, מעביר או מוחק קבצים.
+- **Keeps working when you leave the app.** Ask something, lock the phone, and the answer waits in the conversation,
+  with a notification when it is ready.
+- **Opens without a connection.** The app starts even when the Mac is unreachable, and files it already received stay viewable.
+- **Answers locally by default.** A local model (Ollama) runs on the Mac. A cloud model is used only when you ask for it,
+  or when you accept its offer for a complex task.
+- **Catches false claims.** If an answer says "sent" or "scheduled" but no action ran, a warning appears under it.
 
-תוכן קובץ מגיע למודל מסומן כמידע בלבד. הוראות שכתובות בתוך קובץ לא מבוצעות.
+## How it works
 
-macOS מבקש אישור לפני גישה ל־Documents, ל־Desktop ול־Downloads. באפליקציה: הגדרות ← בדיקת גישה.
-אם חלון האישור לא מופיע במק, מוסיפים את Node ל"גישה מלאה לדיסק". הנתיב המדויק מופיע במסך ההגדרות.
-
-אפשר להוסיף או לחסום תיקיות ב־`~/.brain/config.json`:
-
-```json
-{ "extraFileRoots": ["/Volumes/Backup"], "extraBlockedPaths": ["/Users/me/Private"] }
+```mermaid
+flowchart LR
+  phone["iPhone app<br/>(Home Screen PWA)"] -- "Tailscale (HTTPS,<br/>your devices only)" --> server
+  subgraph mac["Your Mac"]
+    server["Brain service<br/>127.0.0.1:8787"]
+    db[("~/.brain<br/>conversations, memory,<br/>activity log")]
+    ollama["Ollama<br/>local model"]
+    helper["Brain Helper<br/>Calendar, Reminders,<br/>Contacts, Notes, Messages"]
+    agents["Claude Code / Codex<br/>conversations"]
+    server --- db
+    server --- ollama
+    server --- helper
+    server --- agents
+  end
+  server -. "only what you allow" .-> cloud["Cloud model<br/>(Anthropic / OpenAI)"]
+  server -. "Google APIs" .-> google["Gmail, Calendar,<br/>Contacts"]
+  server -. "sealed for your device" .-> apns["Apple push service"] -.-> phone
 ```
 
-## מייל ויומן
+- **The Mac does everything.** It holds every credential, runs every tool and stores every conversation.
+  The phone is a window onto it.
+- **The server** is Node 24 with TypeScript and **no npm dependencies**: `node:http`, `node:sqlite` and `node:crypto` only.
+- **The model** proposes tool calls; the server checks them. Tools that only read run at once. Tools that change something
+  become a card that you can edit before approving, and they run once, only after you approve.
+- **Brain Helper** is a tiny windowless Mac app (Swift, no network access) that holds macOS's permissions for Calendar,
+  Reminders and Contacts and drives Notes and Messages. macOS grants these permissions to apps, not to Node.
 
-החיבור נעשה במק (ההוראות ב־TESTING.md, שלב 5): `npm run google:connect`. הרצה נוספת מוסיפה חשבון (למשל עבודה)
-או מחדשת הרשאה של חשבון קיים. ההרשאות נשמרות ב־Keychain של המק, ופונים רק ל־Google עצמו. שום דבר לא עובר דרך שרת אחר.
-עם כמה חשבונות: קריאה, חיפוש ויומן עוברים על כולם, ליד כל תוצאה מופיע שם החשבון. שליחה וקביעה יוצאות מהחשבון הראשון,
-אלא אם ביקשת אחר ("מהמייל של העבודה"); תשובה יוצאת מהחשבון שקיבל את המייל. בכרטיס יש שדה "מאת" שאפשר לשנות.
-כל עוד האפליקציה ב־Google Cloud במצב Testing, ההרשאה תקפה 7 ימים. יום לפני, בריין מזכיר במק ובאייפון.
-אחרי פרסום האפליקציה: `"googleRenewDays": 0` ב־`~/.brain/config.json`.
-בריין קורא מייל, אנשי קשר ויומן בלי לשאול, ושולח מייל או קובע אירוע רק אחרי אישור בכרטיס, עם הנמען והנוסח לפניך.
-תוכן של מיילים ואירועים מגיע למודל מסומן כ"תוכן מבחוץ, לא הוראות": גם אם מייל "מבקש" משהו, שום דבר לא נשלח בלי האישור שלך.
-את התאריכים ("מחר", "יום שלישי", "22.11") מחשב השרת בשעון ישראל, לא המודל.
-כלי המייל נכנסים לשיחה רק כשהיא עוסקת במייל או ביומן, ונשארים בה מאז. כך שיחה רגילה נשארת מהירה.
-ניתוק: הגדרות ← מייל ויומן ← "ניתוק" ליד החשבון (מבטל את ההרשאה שלו גם אצל Google; האחרים נשארים).
+## Privacy and security
 
-## Apple: יומן, תזכורות, אנשי קשר, פתקים והודעות
+- **Nothing is exposed to the internet.** The server listens on `127.0.0.1` only. Your phone reaches it through
+  [Tailscale](https://tailscale.com), over HTTPS, and only devices on your own tailnet can connect.
+- **Every device is paired.** A one-time code valid for 10 minutes gives a device its token; tokens are stored only as hashes.
+  Five wrong codes cancel all open codes. You can disconnect any device from the app.
+- **Credentials stay on the Mac.** Google permissions are in the macOS Keychain; cloud keys are in `~/.brain/config.json`
+  (readable by you only). None of them ever reaches the phone or the model. Keys are entered with hidden input, never in chat.
+- **Secrets are off limits.** Brain cannot read `.ssh`, `.gnupg`, `.aws`, the Keychain, browser data, Messages, Mail
+  or its own `~/.brain`. Paths are checked after resolving symlinks, so a shortcut can't get around it.
+  It has no tool that edits files; "delete" means moving to the Trash, after approval.
+- **Outside content is data, not instructions.** Text from mails, web pages, files and events reaches the model marked as such.
+  If an email "asks" Brain to forward your mail, nothing is sent without your approval.
+- **Memory refuses sensitive data.** Passwords, card and account numbers and ID numbers are blocked in code,
+  not only by instructions to the model.
+- **The cloud gets only what you allow.** Per category (memory and past conversations; calendar, reminders, contacts, notes
+  and messages; files and coding agents; mail). A category that's off is never sent: its tools aren't offered
+  and its results are removed from the conversation before it leaves the Mac. The tools still run on the Mac.
+- **Notifications are end-to-end encrypted.** Each one is encrypted on the Mac for one device ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291))
+  and signed with the Mac's own key ([VAPID, RFC 8292](https://www.rfc-editor.org/rfc/rfc8292)). Apple only carries it.
+  They go only to the real push services, and a disconnected device gets nothing.
+- **Everything is logged.** The activity log (menu → Activity) shows every tool, approval and cloud request
+  (with what was allowed and an estimated cost).
 
-החיבור נעשה פעם אחת במק: `npm run apple:setup`. הוא בונה את **Brain Helper** (`~/Applications/Brain Helper.app`,
-`helper/main.swift`), אפליקציה קטנה בלי חלון ובלי רשת, שמחזיקה את ההרשאות של macOS ליומן, לתזכורות ולאנשי הקשר,
-ושולטת ב־Notes וב־Messages דרך AppleScript. בריין מפעיל אותה לכל בקשה ומקבל תשובה בקובץ.
-מה שבמק מסונכרן לאייפון דרך iCloud, אז זה גם היומן, התזכורות, אנשי הקשר והפתקים של האייפון.
-כל יצירה, שינוי או שליחה רק אחרי אישור בכרטיס. ביטול: הגדרות מערכת ← פרטיות ואבטחה (לוחות שנה, תזכורות, אנשי קשר, אוטומציה) ← Brain Helper.
-קריאת הודעות (לא רק שליחה) עוד לא קיימת.
+Recommended: turn on FileVault, and set a monthly spending limit with your cloud provider.
 
-## ענן (מצב היברידי)
+## Requirements
 
-בלי מפתח, הכול נשאר במק. עם מפתח, יש שלושה מצבים (הגדרות ← ענן):
-
-- **כשאני מבקש** (ברירת המחדל): המק עונה. בקשה מורכבת (סיכום, ניתוח, השוואה, מכתב, תכנון, הודעה ארוכה) מציגה כרטיס "לעבור לענן?" עם **בענן / במק**.
-  עד הבחירה שום דבר לא נשלח. "במק" בכרטיס: לא ישאל שוב באותה שיחה.
-- **תמיד בענן:** כל שיחה נענית בענן. אם הענן לא זמין (אין אינטרנט, תקלה אצל הספק, תקרת חיוב), המק עונה, ומתחת לתשובה כתוב למה.
-- **מקומי בלבד:** שום דבר לא נשלח, גם כשמבקשים.
-
-בכל מצב: "תעבור לענן", "עם Claude", "עם GPT", "תחזור למק", או המתג **מק / ענן** ליד תיבת ההודעה. הבחירה נשמרת לאותה שיחה.
-
-**פרטיות** (הגדרות ← ענן ← מה מותר לשלוח): הזיכרון ושיחות קודמות; יומן, תזכורות, אנשי קשר, פתקים והודעות; קבצים; מיילים.
-מה שכבוי לא נשלח בכלל: הכלים שלו לא מוצעים למודל בענן, תוצאה שלו מתוך שיחה שהתחילה במק מוחלפת בהערה,
-וגם התשובה שנכתבה ממנה. ההודעות שלך עצמן נשלחות כמו שהן.
-
-המפתחות נשמרים ב־`~/.brain/config.json` במק (קריאה לבעלים בלבד), והכלים רצים במק: המודל בענן רק מבקש,
-וכל שינוי עדיין מחכה לאישור בכרטיס. ליד כל תשובה כתוב "ענן" או "מקומי", ויומן הפעולות מראה מה נשלח ובכמה (הערכה).
-מודלים: `claude-sonnet-5-5` (2$ / 10$ למיליון טוקנים; ההוראות שחוזרות על עצמן נשמרות במטמון ועולות עשירית) ו־`gpt-6-luna` (0.10$ / 0.50$).
-אפשר לבחור אחר ב־`cloudModels` בקובץ ההגדרות, למשל `{"anthropic": "claude-haiku-5-5"}` לזול יותר.
-
-לפי מדיניות OpenAI, מה שנשלח דרך ה־API לא משמש לאימון (ונשמר עד 30 יום לניטור שימוש לרעה). כדאי לקרוא גם את מדיניות Anthropic לפני שמחברים אותה.
-מומלץ לקבוע תקרת חיוב חודשית אצל הספק.
-
-## Claude Code ו־Codex מהטלפון
-
-בריין לא עובד על הקוד בעצמו. הוא רואה את השיחות שלך עם Claude Code ועם Codex במק, ושולח להן הודעה כשאתה מבקש:
-
-- "מה עם Claude, הוא סיים עם המשכנתאות?": קורא את השיחה האחרונה בפרויקט ומסכם: מה ביקשת, מה הוא עשה, איפה עצר.
-- "תגיד לו שימשיך ויתקן את הבאג": כרטיס עם הסוכן, הפרויקט וההודעה. אחרי אישור, ההודעה נשלחת לאותה שיחה
-  (`claude -p --resume` או `codex exec resume`), והסוכן עובד ברקע עם ההרשאות שהיו לו בשיחה.
-- נגמר ה־usage: ההודעה מחכה לחידוש, ואם הסוכן נעצר באמצע עבודה שבריין שלח, בריין שולח "המשך" לבד כשהמגבלה מתאפסת.
-- לא שולח לשיחה שהסוכן עובד עליה עכשיו (פתוחה במק), ולא יותר מהודעה אחת בכל פעם.
-
-רואה רק שיחות שרצות במק עצמו (`~/.claude/projects`, `~/.codex/sessions`), לא שיחות בענן או באתר.
-`npm run agents:probe` מציג איך השיחות שמורות (רק שמות שדות, בלי תוכן).
-
-## זיכרון
-
-העובדות שבזיכרון נכנסות לכל שיחה ונשמרות רק במק. רואים, מוסיפים, עורכים ומוחקים אותן בתפריט ← זיכרון.
-המודל לא ישמור סיסמאות, מספרי כרטיס או חשבון ותעודת זהות, גם אם יתבקש: הבדיקה נעשית בקוד, לא רק בהוראות למודל.
-החיפוש בשיחות (בתפריט, או "מה דיברנו על…") מוצא גם מילים עם תחיליות: "אילת" נמצא בתוך "לאילת".
-
-אפשר לשלוח בקשה ולצאת מהאפליקציה: המק ממשיך לעבוד, והתשובה מחכה בשיחה כשחוזרים. רק כפתור העצירה עוצר.
-
-כלים שרק קוראים מידע רצים מיד. כל כלי שמשנה משהו מוצג ככרטיס עם **אשר / בטל**. לחיצה על טקסט בכרטיס פותחת אותו לעריכה,
-ורץ רק אחרי אישור, פעם אחת בלבד. הודעה חדשה בשיחה מבטלת כרטיס שלא אושר.
-כל הפעלה נרשמת ביומן הפעולות (תפריט ← יומן פעולות).
-
-## דרישות
-
-- Mac עם Apple Silicon ו־16GB זיכרון לפחות
-- Node 24 ומעלה
+- A Mac with Apple Silicon and at least 16 GB of memory
+- The Command Line Tools (`xcode-select --install`), for Brain Helper
+- [Node.js](https://nodejs.org) 24 or later
 - [Ollama](https://ollama.com)
-- [Tailscale](https://tailscale.com/download), במק ובטלפון, באותו חשבון
+- [Tailscale](https://tailscale.com/download) on the Mac and on the iPhone, signed in to the same account
+- An iPhone with iOS 16.4 or later (for notifications)
 
-אין תלויות npm. השרת משתמש רק ביכולות המובנות של Node.
+## Installation
 
-## התקנה
+About 15 minutes. Everything runs in Terminal on the Mac, except the iPhone part of step 6.
+
+**1. Get the code**
 
 ```bash
-# 1. מודל מקומי
+git clone https://github.com/nissimcoh/brain-assistant.git ~/Projects/brain
+cd ~/Projects/brain
+```
+
+**2. Download the local model** (about 8 GB)
+
+```bash
 ollama pull gemma4:12b
+```
 
-# 2. בדיקות
+**3. Run the tests**
+
+```bash
 npm test
+```
 
-# 3. הפעלה כשירות רקע (עולה בכל כניסה למק)
+It should end with `fail 0`.
+
+**4. Install the background service** (starts at login, restarts if it crashes)
+
+```bash
 npm run service:install
+```
 
-# 4. גישה מהטלפון דרך Tailscale (HTTPS, רק למכשירים שלך)
+**5. Open it to your devices through Tailscale**
+
+```bash
 npm run remote:enable
+```
 
-# 5. קוד צימוד לטלפון
+It prints an `https://…ts.net` address. Only devices signed in to your Tailscale can open it.
+
+**6. Pair your iPhone**
+
+```bash
 npm run pair
 ```
 
-באייפון: פותחים את כתובת ה־https ש־`remote:enable` הדפיס, מקלידים את קוד הצימוד,
-ואז בספארי: שיתוף ← הוסף למסך הבית.
+On the iPhone (with Tailscale on): open the `https://` address in Safari, type the pairing code, then
+Share → **Add to Home Screen**. From now on, open Brain from the Home Screen icon.
 
-במק: פותחים את `http://127.0.0.1:8787` בספארי, מצמדים עם קוד חדש (`npm run pair`),
-ואז: קובץ ← הוסף ל־Dock.
-
-## בחירת מודל מקומי
+**7. Check everything**
 
 ```bash
-npm run bench -- gemma4:e4b qwen3.5:9b
+npm run doctor
 ```
 
-הבדיקה מריצה כל שאלה 3 פעמים, בעברית ועם קריאות לכלים, ומדפיסה טבלה. `--think` מריץ עם מצב חשיבה.
+**On the Mac too:** open `http://127.0.0.1:8787` in Safari, pair with a new code (`npm run pair`), then File → **Add to Dock**.
 
-את המודל ואת מצב החשיבה (אוטומטי / כבוי / פועל) בוחרים באפליקציה: תפריט ← הגדרות.
-במצב אוטומטי, בריין מתחיל בלי חשיבה מעמיקה ומפעיל אותה אחרי קריאה לא תקינה לכלי.
+## Connecting your accounts
 
-## אבטחה
+Each one is optional. The app's Settings show what isn't connected yet.
 
-- השרת מאזין רק ל־`127.0.0.1`. גישה מבחוץ עוברת רק דרך Tailscale.
-- כל בקשה דורשת טוקן מכשיר. מקבלים אותו מקוד צימוד חד־פעמי שתקף 10 דקות.
-  אחרי 5 קודים שגויים, כל הקודים הפתוחים מבוטלים.
-- הטוקנים נשמרים במסד הנתונים רק כ־hash.
-- הנתונים נשמרים ב־`~/.brain`, עם הרשאות קריאה לבעלים בלבד. מומלץ להפעיל FileVault.
-- כל שיחה נרשמת ביומן פעולות (`/api/audit`), כולל האם נשלח משהו לענן, אילו סוגי מידע הותרו, וכמה זה עלה (הערכה).
-- מפתחות הענן נשמרים במק בלבד ולא מגיעים לטלפון. לענן נשלחת רק השיחה, לפי הגדרות הפרטיות. הכלים והפעולות רצים במק.
-- הרשאת Google נשמרת ב־Keychain של המק בלבד. היא לא מגיעה לטלפון ולא למודל.
+### Gmail, Google Calendar and Contacts
 
-## מבנה
+Google requires your own (free) app in Google Cloud. It belongs to you only, and nothing goes through any other server.
 
+1. Go to <https://console.cloud.google.com> and create a project (for example `Brain`).
+2. Enable three APIs: **Gmail API**, **Google Calendar API**, **People API**.
+3. Open **Google Auth Platform** → **Get started**: app name `Brain`, your email, Audience **External**.
+4. **Clients** → **Create client** → Application type **Desktop app** → **Create** → **Download JSON**
+   (it lands in Downloads; Brain finds it there).
+5. **Audience** → **Test users** → add your Gmail address (and your work address, if you'll connect it).
+6. On the Mac:
+
+   ```bash
+   npm run google:connect
+   ```
+
+   Choose the account, continue past "Google hasn't verified this app", and tick **all** the boxes.
+   Run it again to add another account (for example work), or to renew a permission.
+
+While the Google app is in *Testing*, Google cancels the permission after 7 days. Brain reminds you a day before,
+on the Mac and on the phone; renewing is `npm run google:connect` again. The client file is kept in `~/.brain/google-client.json`
+and the permissions in the Keychain. You can disconnect from the app's Settings or at <https://myaccount.google.com/permissions>.
+
+### Apple: Calendar, Reminders, Contacts, Notes and Messages
+
+```bash
+npm run apple:setup
 ```
-server/   שרת HTTP, מסד נתונים (node:sqlite), צימוד, חיבור ל־Ollama, Google ו־Apple
-helper/   Brain Helper (Swift): ההרשאות של macOS ליומן, לתזכורות ולאנשי הקשר
-web/      האפליקציה (PWA בעברית, מימין לשמאל), אותה אפליקציה לטלפון ולמק
-scripts/  צימוד, מבחן מודלים, התקנת שירות, Tailscale
-test/     בדיקות
+
+It builds **Brain Helper** (`~/Applications/Brain Helper.app`, under a minute) and macOS asks for up to five permissions:
+Calendar and Reminders (**Allow Full Access**), Contacts, and control of Notes and Messages. Approve each one.
+Whatever is on the Mac syncs with the iPhone through iCloud, so there is nothing to do on the phone.
+To revoke: System Settings → Privacy & Security → (Calendars, Reminders, Contacts, Automation) → Brain Helper.
+
+### Web search
+
+It works without setup (DuckDuckGo, from the Mac). For steadier results, get a free key at
+[app.tavily.com](https://app.tavily.com) and run:
+
+```bash
+npm run web:key -- tvly-…
 ```
 
-## פקודות
+## The cloud (optional)
 
-| פקודה | מה היא עושה |
+Without a key, everything stays on the Mac. With one, a cloud model can answer, but the tools, the approvals
+and the keys stay on the Mac: the cloud model can only ask for a tool, and anything that changes something still waits for your card.
+
+```bash
+npm run cloud:key -- anthropic     # or: openai
+```
+
+The command asks you to paste the key without showing it, checks it with the provider and restarts Brain.
+Default models: `claude-sonnet-5-5` (Anthropic) and `gpt-6-luna` (OpenAI).
+
+Settings → Cloud has three modes:
+
+| Mode | What happens |
 | --- | --- |
-| `npm start` | הרצה בטרמינל (לפיתוח) |
-| `npm test` | בדיקות |
-| `npm run pair` | קוד צימוד למכשיר חדש |
-| `npm run compare -- מודל1 מודל2…` | משווה מודלים (דיוק בכלים, מהירות, כתיבה בעברית) לדוח ב־`reports/`. גם בענן: `openai:gpt-6-luna anthropic:claude-haiku-5-5` (כמה סנטים) |
-| `npm run memory:import -- private/קובץ.txt` | מכניס לזיכרון עובדות מקובץ, אחת בכל שורה (למשל מה ש־ChatGPT יודע עליך). מציג הכול ושומר רק אחרי אישור. תיקיית `private/` לא נכנסת למאגר הקוד |
-| `npm run cloud:key -- openai` | מפתח לענן (או `anthropic`). מבקש להדביק את המפתח בלי להציג אותו, ובודק אותו מול הספק. `--remove` להסרה |
-| `npm run web:key -- tvly-…` | מפתח Tavily לחיפוש באינטרנט (חינם ב־app.tavily.com). `--remove` להסרה |
-| `npm run apple:setup` | חיבור ליומן, לתזכורות, לאנשי הקשר, לפתקים ולהודעות של Apple (בונה את Brain Helper ומבקש הרשאות) |
-| `npm run google:connect` | חיבור חשבון Google (מייל, יומן, אנשי קשר); שוב כדי להוסיף חשבון או לחדש הרשאה. `-- --label שם` לקבוע את שמו |
-| `npm run bench` | מבחן מודלים בעברית |
-| `npm run speed` | מהירות ודיוק בשימוש אמיתי: שיחות, כלים, זיכרון ומעבר בין שיחות (על עותק זמני, לא על הנתונים שלך) |
-| `npm run doctor` | בודק שהכל מוכן: מקום בדיסק, Ollama והמודל, השירות, הגישה מהטלפון, התראה, וקריאת קובץ (`npm run doctor -- ~/קובץ.pdf`) |
-| `npm run cache` | מתי Ollama שומר את ההוראות בזיכרון ומתי קורא אותן מחדש (אורך, כלים, שיחה ארוכה) |
-| `npm run service:install` | התקנה או הפעלה מחדש של שירות הרקע |
-| `npm run service:uninstall` | הסרת שירות הרקע |
-| `npm run service:logs` | יומן השירות |
-| `npm run remote:enable` | גישה מהטלפון דרך Tailscale |
+| **When I ask** (default) | The Mac answers. A complex request (a summary, an analysis, a long letter…) shows a "Move to the cloud?" card, and nothing is sent until you choose. |
+| **Always in the cloud** | Every conversation is answered in the cloud; if the cloud is unavailable, the Mac answers and says why. |
+| **Local only** | Nothing is ever sent. |
+
+In any mode you can write "תעבור לענן" (move to the cloud) or "תחזור למק" (back to the Mac), or tap the **Mac / Cloud** switch
+next to the message box. The choice sticks to that conversation. Each answer is labeled "cloud" or "local",
+and Settings shows this month's estimated spend.
+
+## Notifications
+
+Settings → Notifications → **Turn on notifications** (from the Home Screen app; iOS 16.4 or later). You'll get a notification when:
+
+- an answer finishes after you left the app (tapping it opens the conversation);
+- something is waiting for your approval;
+- Claude Code or Codex finished, stopped, or ran out of usage (and when they'll continue);
+- the Google connection needs renewing.
+
+You can turn off "Show the start of the reply"; notifications then only say that something is ready.
+Reminders that Brain creates in Apple Reminders ring through the Reminders app as usual.
+
+## Claude Code and Codex from your phone
+
+Brain never works on your code itself. It reads your Claude Code and Codex conversations on the Mac
+(`~/.claude/projects`, `~/.codex/sessions`) and relays messages to them when you ask:
+
+- *"What about Claude, did it finish the mortgage app?"* reads the latest conversation in that project and summarizes
+  what you asked, what it did, which files it changed and where it stopped.
+- *"Tell it to continue and fix the bug"* shows a card with the agent, the project and the message. After you approve,
+  the message goes into the same conversation (`claude -p --resume` / `codex exec resume`), and the agent works
+  in the background with the permissions it already had there.
+- **Usage limits:** a message waits for the reset. If an agent stops in the middle of work Brain sent it, Brain sends
+  "continue" by itself when the limit resets (up to five times per request), and notifies you.
+- It never sends to a conversation that is active on the Mac right now, and only one message at a time.
+
+Only conversations on the Mac itself are visible, not ones in the cloud or on the web.
+`npm run agents:probe` shows how they're stored (field names only, no content).
+
+## Configuration
+
+Optional settings go in `~/.brain/config.json`:
+
+```json
+{
+  "localModel": "gemma4:12b",
+  "keepAlive": "2h",
+  "extraFileRoots": ["/Volumes/Backup"],
+  "extraBlockedPaths": ["/Users/me/Private"],
+  "cloudModels": { "anthropic": "claude-haiku-5-5" }
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `localModel` | `gemma4:12b` | The Ollama model (also selectable in the app) |
+| `keepAlive` | `2h` | How long Ollama keeps the model in memory |
+| `contextLength` | `16384` | The model's context window, in tokens |
+| `extraFileRoots` | `[]` | Folders Brain may read besides your home folder |
+| `extraBlockedPaths` | `[]` | Folders Brain must never read |
+| `cloudModels` | `claude-sonnet-5-5`, `gpt-6-luna` | The cloud model per provider |
+| `googleRenewDays` | `7` | Set to `0` once your Google app is published |
+| `port` | `8787` | The local port (Tailscale forwards to it) |
+
+The keys (`tavilyKey`, `anthropicKey`, `openaiKey`) are written to the same file by the commands above.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run service:install` | Install or restart the background service |
+| `npm run service:uninstall` | Remove the background service |
+| `npm run service:logs` | Follow the service log |
+| `npm run remote:enable` | Reach Brain from your devices through Tailscale |
+| `npm run pair` | A pairing code for a new device |
+| `npm run doctor` | Check disk, Ollama, the model, the service, remote access, a Mac notification and file access |
+| `npm run google:connect` | Connect a Google account, add another, or renew a permission (`-- --label name` to name it) |
+| `npm run apple:setup` | Build Brain Helper and ask for the Apple permissions |
+| `npm run cloud:key -- anthropic` | Add a cloud key (or `openai`); `--remove` to remove it |
+| `npm run web:key -- tvly-…` | Add a Tavily key for web search; `--remove` to remove it |
+| `npm run memory:import -- private/facts.txt` | Import facts into memory, one per line; shows them all and saves only after you confirm |
+| `npm run agents:probe` | Show how Claude Code and Codex conversations are stored (no content) |
+| `npm run compare -- model1 model2…` | Compare models on tool accuracy, speed and Hebrew writing; report in `reports/` |
+| `npm run bench` / `speed` / `cache` | Model benchmark, real-use speed test, and prompt-cache behavior |
+| `npm start` | Run in the terminal (development) |
+| `npm test` | Run the tests |
+
+## Project structure
+
+```
+server/    HTTP server, database (node:sqlite), pairing, tools, Ollama, cloud, Google, Apple, agents, notifications
+helper/    Brain Helper (Swift): macOS permissions for Calendar, Reminders, Contacts, Notes and Messages
+web/       The app: a right-to-left Hebrew PWA, the same one on the phone and on the Mac
+scripts/   Setup, pairing, keys, diagnostics and benchmarks
+test/      Tests (node:test)
+```
+
+Personal files (for example facts to import into memory) belong in `private/`, which is never committed.
+
+## Development
+
+```bash
+npm start          # run in the terminal instead of the service
+npm test           # all tests
+```
+
+The tests start their own fake Ollama, cloud providers and push service and use temporary folders,
+so they never touch your data or the network. [TESTING.md](TESTING.md) has the manual checklist for the iPhone (in Hebrew).
+
+## Roadmap
+
+- WhatsApp
+- Reading SMS and iMessage (today Brain can only send)
+- Voice: speaking to Brain and hearing answers
+- A step-by-step installation guide with screenshots
+
+## License
+
+No license has been chosen yet, so all rights are reserved for now. One will be added before the repository becomes public.
