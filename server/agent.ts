@@ -43,7 +43,7 @@ export const INTENTS: Record<PersonalGroup, RegExp> = {
   calendar: /יומן|לוח ה?שנה|calendar|פגיש|אירוע|לקבוע|תקבע|קבע לי|תזמן|פנוי|לו["״]?ז|מה יש לי|מה מתוכנן/i,
   reminders: /תזכורת|תזכורות|תזכיר|להזכיר|reminder|משימות|מטלות/i,
   notes: /פתק|notes|לרשום|תרשום|רשום לי/i,
-  // "תשלח לחננאל ש…", "תכתוב לו", "תגיד לאמא ש…": writing to someone, even without the word "הודעה".
+  // "תשלח ליואב ש…", "תכתוב לו", "תגיד לאמא ש…": writing to someone, even without the word "הודעה".
   // Not "תכתוב לי" / "תשלח לנו" (that's for the user). Mail requests also bring this group (harmless).
   messages:
     /הודע|\bsms\b|סמס|i\s*-?m[ae]ss?age|איי?מסג|מסרון|\btext (?:him|her|them)\b|(?:^|[\s,.])(?:ת?שלחי?|ת?כתוב|תכתבי|כתבי|תודיע|תגידי?|תעדכן)\s+ל(?!(?:י|נו)(?:[\s.,!?]|$))[א-תa-z]/i,

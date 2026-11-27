@@ -222,7 +222,7 @@ test('which words bring which tools', () => {
   assert.deepEqual(groups('יש לי מיילים חדשים?'), ['mail']);
   assert.deepEqual(groups('מה השעה?'), []);
   // Writing to someone, even without the word "הודעה" (and with a typo in "iMessage").
-  assert.deepEqual(groups('תשלח לחננאל אחי שאני בדרך אליו'), ['messages']);
+  assert.deepEqual(groups('תשלח ליואב אחי שאני בדרך אליו'), ['messages']);
   assert.deepEqual(groups('תכתוב לו דרך imassage'), ['messages']);
   assert.deepEqual(groups('תגיד לאמא שאני מאחר'), ['messages']);
   assert.deepEqual(groups('תכתוב לי שיר על הים'), [], '"לי" is the user');
@@ -316,10 +316,10 @@ test('a message: number from the card, iMessage first, SMS when there is no iMes
   assert.match(sent[1], /send "אני מגיע בעוד רבע שעה" to p/);
 });
 
-test('"תשלח לחננאל ש…" without the word "הודעה": the message tools are offered, and the model is told it can send', async () => {
+test('"תשלח ליואב ש…" without the word "הודעה": the message tools are offered, and the model is told it can send', async () => {
   const { chat } = await brain({ apple: fakeApple() });
   requests.length = 0;
-  await chat('תשלח לחננאל אחי שאני בדרך אליו');
+  await chat('תשלח ליואב אחי שאני בדרך אליו');
   const names = toolNames(requests[0]);
   assert.ok(names.includes('message_send') && names.includes('find_contact'));
   const system = requests[0].messages[0].content;

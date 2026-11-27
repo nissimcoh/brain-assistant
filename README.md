@@ -4,6 +4,17 @@
 
 **[📖 Setup guide](docs/GUIDE.md)** · **[🔒 Privacy policy](PRIVACY.md)** · **[עברית](README.he.md)**
 
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+![Runs on: macOS with Apple Silicon](https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Apple%20Silicon-lightgrey)
+![Node 24, no npm dependencies](https://img.shields.io/badge/node-24%2B%20%C2%B7%20no%20dependencies-brightgreen)
+![Local model: Ollama](https://img.shields.io/badge/local%20model-Ollama-black)
+
+<p align="center">
+  <img src="docs/demo.gif" width="300" alt="Brain on an iPhone: the time at once, a message to Omer sent only after tapping Approve, and a photo of a plant described by the model on the Mac">
+  <br>
+  <sub>The real app, with made-up people. <a href="docs/demo.mp4">Sharper video (MP4)</a></sub>
+</p>
+
 <p align="center">
   <img src="docs/screenshots/mail.jpg" width="200" alt="New mail, summarized">
   <img src="docs/screenshots/approve.jpg" width="200" alt="A reply waiting for approval">
@@ -36,8 +47,10 @@ and happens only after you tap **Approve**.
 - [Screenshots](#screenshots)
 - [How it works](#how-it-works)
 - [Privacy and security](#privacy-and-security)
+- [How fast is it?](#how-fast-is-it)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Updating and uninstalling](#updating-and-uninstalling)
 - [Connecting your accounts](#connecting-your-accounts)
 - [The cloud (optional)](#the-cloud-optional)
 - [Notifications](#notifications)
@@ -60,7 +73,7 @@ and happens only after you tap **Approve**.
 | **Calendar** | Read the iPhone/Mac calendar (iCloud) and Google Calendar together | Creating an event |
 | **Reminders** | List open reminders | Creating one (it rings on the iPhone) or completing one |
 | **Notes** | Search and read Apple Notes | Creating a note |
-| **Messages** | Find a contact's phone number | Sending an iMessage or SMS from the Mac |
+| **Messages** | Find a contact's number. Just say *"tell Omer I'm on my way"* | Sending an iMessage or SMS from the Mac |
 | **Files** | Search (Spotlight), read (text, PDF, Word, Pages…), list folders, send a file to the phone | Moving to the Trash (never deleting) |
 | **Web** | Search (Tavily, or DuckDuckGo without a key) and read pages | — |
 | **Memory** | Remember lasting facts about you, search past conversations | Forgetting a fact |
@@ -77,6 +90,9 @@ It also:
 - **Answers locally by default.** A local model (Ollama) runs on the Mac. A cloud model is used only when you ask for it,
   or when you accept its offer for a complex task.
 - **Catches false claims.** If an answer says "sent" or "scheduled" but no action ran, a warning appears under it.
+- **Answers simple questions at once.** "What time is it?" and "what's the date?" come from the Mac's clock, without waiting for a model.
+- **Never hangs silently.** While the Mac is still reading a long conversation, the app says so. A local answer that stalls is
+  stopped with a clear message and an offer to try the cloud.
 
 ## Screenshots
 
@@ -85,8 +101,8 @@ It also:
 | A new conversation | Tomorrow, from iCloud and Google | Offering the cloud for a long task | Notifications |
 | <img src="docs/screenshots/privacy.jpg" width="190" alt="What the cloud may see"> | <img src="docs/screenshots/memory.jpg" width="190" alt="Memory you can edit"> | <img src="docs/screenshots/menu.jpg" width="190" alt="Conversations and menu"> | <img src="docs/screenshots/pair.jpg" width="190" alt="Pairing a device"> |
 | What the cloud may see | Memory you can edit | Conversations and menu | Pairing a device |
-| <img src="docs/screenshots/upload.jpg" width="190" alt="Sending a photo from the phone"> | <img src="docs/screenshots/photo.jpg" width="190" alt="A photo from the Mac's camera"> | <img src="docs/screenshots/live.jpg" width="190" alt="Live view of the Mac's camera"> |
-| Sending a photo from the phone | A photo from the Mac's camera | Live view of the Mac's camera |
+| <img src="docs/screenshots/message.jpg" width="190" alt="A message waiting for approval"> | <img src="docs/screenshots/upload.jpg" width="190" alt="Sending a photo from the phone"> | <img src="docs/screenshots/photo.jpg" width="190" alt="A photo from the Mac's camera"> | <img src="docs/screenshots/live.jpg" width="190" alt="Live view of the Mac's camera"> |
+| A message waiting for approval | Sending a photo from the phone | A photo from the Mac's camera | Live view of the Mac's camera |
 
 Every screen, step by step, is in the [setup guide](docs/GUIDE.md).
 
@@ -149,6 +165,22 @@ The full details, including what each outside service receives and how to delete
   (with what was allowed and an estimated cost).
 
 Recommended: turn on FileVault, and set a monthly spending limit with your cloud provider.
+
+## How fast is it?
+
+Measured on a MacBook Air M4 with 16 GB and `gemma4:12b`:
+
+| What | On the Mac | In the cloud |
+| --- | --- | --- |
+| "What time is it?" | at once (the Mac's clock, no model) | at once |
+| The next message in a conversation | 2–5 s | 2–4 s |
+| The first message of a new conversation | 10–15 s (the Mac reads Brain's instructions; Brain starts this when you open a new conversation) | 2–4 s |
+| A question about a photo | 30–60 s | photos from the Mac's camera never go to the cloud |
+| Continuing a long conversation that started in the cloud | up to a minute (the Mac reads it all once) | — |
+
+Reading the prompt is the slow part: the Mac reads about 140 tokens a second, which is close to what this chip can do with a
+12B model. The Mac keeps what it already read, so the next messages are fast. A Mac with a Pro or Max chip is much faster.
+For long or complex requests, the cloud is the quick option, and Brain offers it when it fits.
 
 ## Requirements
 
@@ -215,6 +247,31 @@ npm run doctor
 ```
 
 **On the Mac too:** open `http://127.0.0.1:8787` in Safari, pair with a new code (`npm run pair`), then File → **Add to Dock**.
+
+## Updating and uninstalling
+
+**Update:**
+
+```bash
+cd ~/Projects/brain
+git pull
+npm test
+npm run service:install
+```
+
+If the [changelog](CHANGELOG.md) says so for a version, run `npm run apple:setup` again. Your conversations, memory and settings in `~/.brain` stay as they are.
+The app on the phone updates itself when you open it (sometimes only on the second time).
+
+**Uninstall:**
+
+```bash
+npm run service:uninstall
+tailscale serve reset
+rm -rf ~/.brain ~/Applications/"Brain Helper.app"
+```
+
+Then remove the Home Screen icon, and, if you connected Google, remove Brain at <https://myaccount.google.com/permissions>.
+`rm -rf ~/.brain` deletes your conversations and memory for good; skip it if you might come back.
 
 ## Connecting your accounts
 
@@ -410,7 +467,9 @@ so they never touch your data or the network. [TESTING.md](TESTING.md) has the m
 - WhatsApp
 - Reading SMS and iMessage (today Brain can only send)
 - Voice: speaking to Brain and hearing answers
-- A step-by-step installation guide with screenshots
+- Saving an email attachment straight to a folder on the Mac (after approval), and downloading invoices that arrive as links
+
+Questions, bugs and ideas: [open an issue](https://github.com/nissimcoh/brain-assistant/issues).
 
 ## License
 

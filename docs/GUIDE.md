@@ -16,6 +16,7 @@ Every step says what you should see. Brain's screens are in Hebrew; the screensh
 7. [The cloud and your privacy settings](#7-the-cloud-and-your-privacy-settings)
 8. [Using Brain](#8-using-brain)
 9. [When something doesn't work](#9-when-something-doesnt-work)
+10. [Updating Brain](#10-updating-brain)
 
 ---
 
@@ -207,6 +208,14 @@ Tip: set a monthly spending limit with the provider. Settings shows this month's
 
 Talk to Brain the way you'd talk to an assistant, in Hebrew. A few things to try:
 
+<p align="center"><img src="demo.gif" width="260" alt="The time, a message after approval, and a photo"></p>
+
+### Quick questions
+
+- "מה השעה?" (what time is it?) and "איזה יום היום?" (what day is it?) are answered at once, from the Mac's clock.
+- Anything else goes to the model. On the Mac, the first message of a new conversation takes about 10–15 seconds and the next ones
+  a few seconds. While it's still reading, the app says so. **Don't send another message while waiting**: a new message stops the answer that's on its way.
+
 ### Mail
 
 <p align="center"><img src="screenshots/mail.jpg" width="260" alt="A list of new mail and a summary"> <img src="screenshots/approve.jpg" width="260" alt="A reply waiting for approval"></p>
@@ -214,6 +223,16 @@ Talk to Brain the way you'd talk to an assistant, in Hebrew. A few things to try
 - "יש לי מיילים חדשים?" (any new mail?) shows a list of the mails, and a short summary.
 - "תענה לרותם שמתאים לי" (reply to Rotem that it works for me) shows a card with **From**, **To**, **Subject** and **Body**.
   Tap any field to change it, then **Approve** or **Cancel**. Nothing is sent before you approve.
+- "תוריד לי את החשבונית מהמייל של…" (download the invoice from …'s mail) brings an attached file to the phone, where you can open, save or share it.
+  (Some companies send a link instead of a file; Brain shows you the link.)
+
+### Messages
+
+<p align="center"><img src="screenshots/message.jpg" width="260" alt="A message waiting for approval"></p>
+
+- "תשלח לעומר שאני בדרך" (tell Omer I'm on my way) finds Omer in your contacts and shows a card with his number and the text.
+  **Approve**, and the Mac sends it as an iMessage (or an SMS through your iPhone). You don't need to say "message" or "iMessage".
+- WhatsApp isn't supported yet.
 
 ### Calendar and reminders
 
@@ -288,6 +307,22 @@ Talk to Brain the way you'd talk to an assistant, in Hebrew. A few things to try
 | "The camera isn't available" | The Mac is asleep or its lid is closed. A video call on the Mac may also be using it. |
 | "HEIC photos aren't supported" | Rare (the app converts photos). On the iPhone: Settings → Camera → Formats → **Most Compatible**, or send a screenshot. |
 | An Apple line with ✘ | It says where to fix it in System Settings. Then run `npm run apple:setup` again. |
+| "The Mac is still reading the conversation (… s)" | Normal for a new or long conversation on the Mac. Wait for it; a new message would start over. For speed, write "תעבור לענן". |
+| "The local model got stuck and didn't finish answering" | Brain stopped it after a long silence. Try again, write it shorter, or write "תעבור לענן". |
+| Brain says it has no access to messages | `npm run apple:setup` on the Mac, and approve "control Messages". Messages must be signed in on the Mac. |
 | Anything else | `npm run doctor`, and `npm run service:logs` for the service log. |
 
 The service can be restarted any time with `npm run service:install`. Your data in `~/.brain` stays as it is.
+
+## 10. Updating Brain
+
+```bash
+cd ~/Projects/brain
+git pull
+npm test
+npm run service:install
+```
+
+If the [changelog](../CHANGELOG.md) says so for a version, also run `npm run apple:setup` and approve the windows again.
+Your conversations, memory and settings stay as they are. The app on the phone picks up the new version when you open it
+(sometimes only on the second time). To remove Brain completely, see [Updating and uninstalling](../README.md#updating-and-uninstalling).

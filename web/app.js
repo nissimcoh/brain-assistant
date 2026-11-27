@@ -857,6 +857,22 @@ messageList.addEventListener('focusin', fitMessages);
 new ResizeObserver(fitMessages).observe(messageList);
 
 // ---------------- approval cards ----------------
+// "+972 50-123-4567" in Hebrew text reads backwards ("972…+"): each phone number is isolated as left-to-right.
+const PHONE_RUN = /\+?\d[\d \-()]{5,}\d/g;
+function withNumbers(el, text) {
+  let last = 0;
+  for (const m of String(text ?? '').matchAll(PHONE_RUN)) {
+    el.append(text.slice(last, m.index));
+    const b = document.createElement('bdi');
+    b.dir = 'ltr';
+    b.textContent = m[0];
+    el.append(b);
+    last = m.index + m[0].length;
+  }
+  el.append(String(text ?? '').slice(last));
+  return el;
+}
+
 function renderActionCard(action, existing) {
   const card = existing || document.createElement('div');
   card.className = `action-card ${action.status}`;
@@ -868,7 +884,7 @@ function renderActionCard(action, existing) {
   head.textContent = action.status === 'pending' ? `⚡ ${action.label} · מחכה לאישור שלך` : `⚡ ${action.label}`;
   const summary = document.createElement('div');
   summary.className = 'ac-summary';
-  summary.textContent = action.summary;
+  withNumbers(summary, action.summary);
   card.append(head, summary);
 
   // While waiting for approval the text itself is editable: tap it and type (no separate "edit" button).
@@ -894,6 +910,7 @@ function renderActionCard(action, existing) {
       input.className = 'ac-input';
       input.name = f.key;
       input.value = f.value ?? '';
+      input.dir = 'auto'; // a phone number or an address left-to-right, Hebrew right-to-left
       input.placeholder = f.value ? '' : 'לא חובה';
       input.enterKeyHint = 'done';
       if (f.multiline) {
@@ -912,6 +929,7 @@ function renderActionCard(action, existing) {
     } else {
       const v = document.createElement('div');
       v.className = 'ac-value';
+      v.dir = 'auto';
       v.textContent = f.value;
       field.append(v);
     }
