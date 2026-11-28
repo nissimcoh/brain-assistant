@@ -259,7 +259,7 @@ npm test
 npm run service:install
 ```
 
-If the [changelog](CHANGELOG.md) says so for a version, run `npm run apple:setup` again. Your conversations, memory and settings in `~/.brain` stay as they are.
+If the [changelog](CHANGELOG.md) marks a version **Requires `npm run apple:setup`**, run it again. Your conversations, memory and settings in `~/.brain` stay as they are.
 The app on the phone updates itself when you open it (sometimes only on the second time).
 
 **Uninstall:**

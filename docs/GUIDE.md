@@ -323,6 +323,6 @@ npm test
 npm run service:install
 ```
 
-If the [changelog](../CHANGELOG.md) says so for a version, also run `npm run apple:setup` and approve the windows again.
+If the [changelog](../CHANGELOG.md) marks a version **Requires `npm run apple:setup`**, also run it and approve the windows again.
 Your conversations, memory and settings stay as they are. The app on the phone picks up the new version when you open it
 (sometimes only on the second time). To remove Brain completely, see [Updating and uninstalling](../README.md#updating-and-uninstalling).

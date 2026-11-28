@@ -1,42 +1,76 @@
 # Changelog
 
-Updating is `git pull`, `npm test`, `npm run service:install`. When a version says **Run `npm run apple:setup`**, do that too:
-Brain Helper changed, and macOS asks for its permissions again.
+All notable changes to Brain are documented here, newest first.
 
-## 0.17.2
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
+[Semantic Versioning](https://semver.org/). To update, see [Updating and uninstalling](README.md#updating-and-uninstalling).
+Versions marked **Requires `npm run apple:setup`** change Brain Helper: run the command after updating and approve the permissions again.
 
-- **Messages:** "תשלח לעומר שאני בדרך" (tell Omer I'm on my way) now offers to send a message, even without the word "message".
-  Before, Brain could find the contact but said it couldn't send.
-- **Instant answers:** "מה השעה?" and "איזה יום היום?" come from the Mac's clock, without the model.
-- **No silent hangs:** a local answer that runs on with nothing to show is stopped after a limit, with a clear message and an offer
-  to try the cloud. While the Mac reads a long conversation, the app shows how long it has been.
-- **Faster with photos on the Mac:** only the current message's photos go to the local model, so later messages in the same
-  conversation don't re-read everything.
-- **Faster new conversations:** the first message waits for the instructions the Mac already started reading, instead of starting over.
-- **Fixed:** phone numbers in approval cards were shown backwards ("972…+").
+## [0.17.2] - 2026-11-27
 
-## 0.17.1
+### Added
+- Instant answers to "what time is it?" and "what's the date?" from the Mac's clock, without a model.
+- A progress indicator while the local model reads a long conversation.
+- A demo video, a speed table measured on a MacBook Air M4, update and uninstall instructions, and this changelog.
 
-- **Email attachments:** download an attached invoice, receipt or document from Gmail to the phone.
+### Changed
+- Asking to write to someone ("tell Omer that…", "text him") now brings in the messaging tools, even without the word "message".
+- The local model receives only the current message's photos, so later messages in the conversation stay fast.
+- The first message of a new conversation continues the prompt read that has already started, instead of restarting it.
 
-## 0.17.0
+### Fixed
+- Both models said they had no access to messages when they did.
+- A stalled local answer could run indefinitely. It now has length and time limits, and stops with a clear message.
+- Phone numbers in approval cards were displayed backwards in right-to-left text.
+- Bold text in the Hebrew README was rendered as asterisks.
 
-**Run `npm run apple:setup`** (the camera permission).
+## [0.17.1] - 2026-11-26
 
-- **Photos and files from the phone:** the **+** next to the message box. The local model sees photos; documents are read on the Mac.
-- **The Mac's camera:** a photo after approval, and a live view while you watch (up to 5 minutes). Never sent to the cloud.
+### Added
+- Downloading email attachments (invoices, receipts, documents) from Gmail to the phone.
+
+## [0.17.0] - 2026-11-23
+
+**Requires `npm run apple:setup`** (camera permission).
+
+### Added
+- Sending photos and files from the phone, with the **+** button next to the message box.
+- Taking a photo with the Mac's camera after approval. The photo is never sent to the cloud.
+- Live view of the Mac's camera, for up to 5 minutes.
 - MIT license.
 
-## 0.16.1
+### Fixed
+- The content security policy blocked images on the iPhone.
 
-- README in English and Hebrew, a step-by-step guide with screenshots, and a privacy policy.
+## [0.16.1] - 2026-11-23
 
-## 0.16.0
+### Added
+- README in English and Hebrew, with screenshots.
+- Setup and usage guide.
+- Privacy policy.
 
-- **iPhone notifications**, end-to-end encrypted on the Mac (Web Push, RFC 8291).
+### Fixed
+- Calendar event times were displayed in reverse order.
+- A list directly after a line of text was not rendered as a list.
+- The header showed "local" in cloud conversations.
 
-## 0.15.0
+## [0.16.0] - 2026-11-23
 
-**Run `npm run apple:setup`** (Felipe Helper became Brain Helper).
+### Added
+- iPhone notifications: an answer is ready, an action is waiting for approval, a coding agent has finished.
+- Notifications are encrypted on the Mac before they leave it (Web Push, RFC 8291).
 
-- The assistant was renamed from Felipe to Brain. Data moves from `~/.felipe` to `~/.brain` by itself.
+## [0.15.0] - 2026-11-23
+
+**Requires `npm run apple:setup`** (Felipe Helper is replaced by Brain Helper).
+
+### Changed
+- Renamed from Felipe to Brain.
+- Data moves automatically from `~/.felipe` to `~/.brain`.
+
+[0.17.2]: https://github.com/nissimcoh/brain-assistant/releases/tag/v0.17.2
+[0.17.1]: https://github.com/nissimcoh/brain-assistant/commit/0b05aba
+[0.17.0]: https://github.com/nissimcoh/brain-assistant/commit/d85aa58
+[0.16.1]: https://github.com/nissimcoh/brain-assistant/commit/7c01143
+[0.16.0]: https://github.com/nissimcoh/brain-assistant/commit/67ec478
+[0.15.0]: https://github.com/nissimcoh/brain-assistant/commit/3891d49
